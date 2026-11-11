@@ -22,18 +22,17 @@ class Settings:
 
     tb_url: str = "http://localhost:8080"
     tb_api_key: str = ""
-    supabase_url: str = ""
-    supabase_jwks_url: str = ""
+    auth_jwks_url: str = ""
+    auth_issuer: str = "lextari-auth"
+    auth_audience: str = "lextari-app"
     debug: bool = False
     cors_origins: tuple[str, ...] = ("http://localhost:3000",)
     ws_poll_interval: int = 5
 
     @property
     def jwks_url(self) -> str:
-        """Supabase JWKS endpoint, auto-derived from the project URL."""
-        if self.supabase_jwks_url:
-            return self.supabase_jwks_url
-        return f"{self.supabase_url}/auth/v1/.well-known/jwks.json"
+        """JWKS endpoint published by the Lextari auth Worker."""
+        return self.auth_jwks_url
 
     @classmethod
     def from_env(cls, env: Mapping[str, Any] | None = None) -> "Settings":
@@ -54,8 +53,9 @@ class Settings:
         return cls(
             tb_url=read("TB_URL", "http://localhost:8080"),
             tb_api_key=read("TB_API_KEY"),
-            supabase_url=read("SUPABASE_URL"),
-            supabase_jwks_url=read("SUPABASE_JWKS_URL"),
+            auth_jwks_url=read("AUTH_JWKS_URL"),
+            auth_issuer=read("AUTH_ISSUER", "lextari-auth"),
+            auth_audience=read("AUTH_AUDIENCE", "lextari-app"),
             debug=_as_bool(read("DEBUG", "false")),
             cors_origins=_as_tuple(read("CORS_ORIGINS", "http://localhost:3000")),
             ws_poll_interval=poll_interval,

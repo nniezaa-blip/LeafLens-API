@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app.auth.jwks import verify_supabase_token
+from app.auth.jwks import verify_access_token
 from app.clients.thingsboard import ThingsBoardClient
 from app.config import Settings, get_settings_from_scope
 from app.db.d1 import get_db_from_scope, query_first
@@ -179,7 +179,7 @@ async def ws_relay(websocket: WebSocket) -> None:
 
     The Flutter client authenticates with a first message::
 
-        {"type": "auth", "token": "<supabase_jwt>"}
+        {"type": "auth", "token": "<access_token>"}
 
     The server replies ``{"type": "auth_ok"}`` and auto-subscribes to the
     user's first linked device. The legacy query-param auth and explicit
@@ -197,7 +197,12 @@ async def ws_relay(websocket: WebSocket) -> None:
     token, token_from_message = auth
 
     try:
-        user = await verify_supabase_token(token, settings.jwks_url, settings.supabase_url)
+        user = await verify_access_token(
+            token,
+            settings.jwks_url,
+            settings.auth_issuer,
+            settings.auth_audience,
+        )
     except Exception:
         await websocket.close(code=4003, reason="Invalid token")
         return

@@ -7,18 +7,22 @@
   "observability": {
     "enabled": true
   },
+  "routes": [
+    { "pattern": "lextari-api.danialsanusi.com", "custom_domain": true }
+  ],
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "lextari",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "cddd5fd9-ec50-4589-ad79-f2f066029d50",
       "migrations_dir": "migrations"
     }
   ],
   "vars": {
     "TB_URL": "https://tb.example.com",
-    "SUPABASE_URL": "https://your-project.supabase.co",
-    "SUPABASE_JWKS_URL": "",
+    "AUTH_JWKS_URL": "https://lextari-auth.danialsanusi.com/.well-known/jwks.json",
+    "AUTH_ISSUER": "lextari-auth",
+    "AUTH_AUDIENCE": "lextari-app",
     "DEBUG": "false",
     "CORS_ORIGINS": "http://localhost:3000",
     "WS_POLL_INTERVAL": "5"

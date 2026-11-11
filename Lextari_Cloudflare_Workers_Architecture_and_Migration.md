@@ -1,12 +1,12 @@
-# LeafLens — Cloudflare Workers, D1 & Authentication
+# Lextari — Cloudflare Workers, D1 & Authentication
 
 **Full architecture, migration plan and free-tier strategy**
 
 | | |
 |---|---|
-| **Project** | LeafLens — AI-Powered Plant Health Monitoring |
+| **Project** | Lextari — AI-Powered Plant Health Monitoring |
 | **Context** | Final Year Project, Bachelor of Computer Science, IIUM |
-| **Repositories** | `leaflens` (Flutter) + `leaflens-api` (FastAPI) |
+| **Repositories** | `lextari` (Flutter) + `lextari-api` (FastAPI) |
 | **Date** | 2 November 2026 |
 | **Version** | 1.0 |
 
@@ -36,10 +36,10 @@
 
 ## 1. Executive Summary
 
-LeafLens currently has two repositories:
+Lextari currently has two repositories:
 
-- **`leaflens` (Flutter)** — uses `supabase_flutter` for login/signup. The app does not query Supabase tables; Supabase is only the identity provider.
-- **`leaflens-api` (FastAPI)** — does not handle passwords. It verifies a Supabase JWT, proxies ThingsBoard REST calls, and stores one table, `user_devices`, in Supabase Postgres.
+- **`lextari` (Flutter)** — uses `supabase_flutter` for login/signup. The app does not query Supabase tables; Supabase is only the identity provider.
+- **`lextari-api` (FastAPI)** — does not handle passwords. It verifies a Supabase JWT, proxies ThingsBoard REST calls, and stores one table, `user_devices`, in Supabase Postgres.
 
 The migration is **not a database swap**. It is an **auth provider replacement**. Supabase Auth currently does five jobs:
 
@@ -57,13 +57,13 @@ The recommended full-Workers architecture is asymmetric:
 
 ```text
 Flutter
-  ├── /auth/*  → leaflens-auth Worker (Hono/TypeScript, D1)
+  ├── /auth/*  → lextari-auth Worker (Hono/TypeScript, D1)
   │                 - email/password + Google
   │                 - Argon2id
   │                 - JWT + refresh tokens
   │                 - JWKS
   │
-  └── /api/*   → leaflens-api Worker (Python/FastAPI, D1)
+  └── /api/*   → lextari-api Worker (Python/FastAPI, D1)
                     - devices / telemetry / RPC / health
                     - thin request path
                     - pyfetch → ThingsBoard REST
@@ -103,8 +103,8 @@ The free-tier question is not about D1 or Workers requests. It is about **passwo
 
 | Repository | Stack | Auth role | Database | Deploy |
 |---|---|---|---|---|
-| `leaflens` | Flutter 3.x, Riverpod, GoRouter, Hive, Firebase Messaging | `supabase_flutter` (email/password) | Supabase Auth only | Local / mobile build |
-| `leaflens-api` | FastAPI, SQLAlchemy async, asyncpg, Alembic, httpx, PyJWT | Verifies Supabase JWT | Supabase Postgres (`user_devices`) | Docker / VPS |
+| `lextari` | Flutter 3.x, Riverpod, GoRouter, Hive, Firebase Messaging | `supabase_flutter` (email/password) | Supabase Auth only | Local / mobile build |
+| `lextari-api` | FastAPI, SQLAlchemy async, asyncpg, Alembic, httpx, PyJWT | Verifies Supabase JWT | Supabase Postgres (`user_devices`) | Docker / VPS |
 
 ### 2.2 Flutter auth surface
 
@@ -113,7 +113,7 @@ The free-tier question is not about D1 or Workers requests. It is about **passwo
 | `lib/features/auth/data/leaf_lens_auth.dart` | Wraps Supabase; exposes signIn, signUp, signOut, accessToken, onAuthChange. |
 | `lib/features/auth/data/auth_repository.dart` | Maps Supabase `AuthException` codes to user-facing messages. |
 | `lib/features/dashboard/data/dashboard_providers.dart` | `authStateProvider` watches Supabase auth state and syncs `ApiClient.token`. |
-| `lib/core/router/auth_guard.dart` | Uses `isLoggedIn` or `LeafLensAuth.accessToken` for redirects. |
+| `lib/core/router/auth_guard.dart` | Uses `isLoggedIn` or `LextariAuth.accessToken` for redirects. |
 | `lib/core/config/app_config.dart` | `SUPABASE_URL` and `SUPABASE_ANON_KEY` from `dart-define`. |
 | `lib/core/init/leaf_lens_auth_init.dart` | Calls `Supabase.initialize` once at startup. |
 
@@ -207,7 +207,7 @@ Important consequences:
 
 ### 3.4 Free-tier limits that matter
 
-| Resource | Free allowance | Assessment for LeafLens |
+| Resource | Free allowance | Assessment for Lextari |
 |---|---|---|
 | Workers requests | 100,000 / day | Enough for an FYP demo. |
 | Workers CPU | 10 ms / request | The hard constraint for password hashing. |
@@ -235,7 +235,7 @@ There are two viable target shapes. Both keep ThingsBoard and the ESP32 outside 
 └─────────┘                      │              │
       │                          ▼              ▼
       │                  ┌──────────────┐  ┌──────────────────┐
-      └─────────────────▶│ leaflens-api │─▶│   ThingsBoard    │
+      └─────────────────▶│ lextari-api │─▶│   ThingsBoard    │
                          │   FastAPI    │  │   REST / MQTT    │
                          └──────┬───────┘  └──────────────────┘
                                 │
@@ -271,14 +271,14 @@ Two Workers, both deployed from the same repository or from two repositories. Th
      │ 1. login (email/password or Google)
      ▼
 ┌─────────────────────┐        ┌──────────────────┐
-│  leaflens-auth      │───────▶│        D1        │
+│  lextari-auth      │───────▶│        D1        │
 │  Hono + Argon2      │        │ users, refresh,  │
 │  issues JWT         │        │ user_devices     │
 └─────────┬───────────┘        └──────────────────┘
           │ 2. access token
           ▼
 ┌─────────────────────┐        ┌──────────────────┐
-│  leaflens-api       │───────▶│   ThingsBoard    │
+│  lextari-api       │───────▶│   ThingsBoard    │
 │  Python/FastAPI     │        │   REST           │
 │  verifies JWT       │        └──────────────────┘
 └─────────────────────┘
@@ -369,7 +369,7 @@ CREATE TABLE user_devices (
   user_id TEXT NOT NULL,
   tb_device_id TEXT NOT NULL UNIQUE,
   device_name TEXT NOT NULL,
-  device_type TEXT NOT NULL DEFAULT 'leaflens-env',
+  device_type TEXT NOT NULL DEFAULT 'lextari-env',
   mac_address TEXT UNIQUE,
   created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
@@ -445,8 +445,8 @@ Use RS256 (or EdDSA) with a private key stored as a Worker secret. The Auth Work
 |---|---|---|---|
 | Access token | 15 minutes | `sub`, `email`, `iss`, `aud`, `iat`, `exp` | Bearer header |
 | Refresh token | 30 days | random opaque token; hash in D1 | `POST /auth/refresh` |
-| Issuer | `leaflens-auth` | Auth Worker | API verifies |
-| Audience | `leaflens-app` | Flutter/API | API verifies |
+| Issuer | `lextari-auth` | Auth Worker | API verifies |
+| Audience | `lextari-app` | Flutter/API | API verifies |
 | Signing | RS256 | private key secret | public JWKS |
 
 Recommended claims: `sub` (user id), `email`, `iss`, `aud`, `iat`, `exp`. Do not put roles or secrets in the token unless needed. The API must not trust a client-supplied user id; it must use `sub` from the verified token.
@@ -729,20 +729,20 @@ API Worker:
 
 ```jsonc
 {
-  "name": "leaflens-api",
+  "name": "lextari-api",
   "main": "src/worker.py",
   "compatibility_date": "2026-11-02",
   "compatibility_flags": ["python_workers"],
   "observability": { "enabled": true },
 
   "d1_databases": [
-    { "binding": "DB", "database_name": "leaflens", "database_id": "<id>" }
+    { "binding": "DB", "database_name": "lextari", "database_id": "<id>" }
   ],
 
   "vars": {
     "TB_URL": "https://tb.example.com",
-    "JWT_ISSUER": "leaflens-auth",
-    "JWT_AUDIENCE": "leaflens-app"
+    "JWT_ISSUER": "lextari-auth",
+    "JWT_AUDIENCE": "lextari-app"
   },
 
   "secrets": {
@@ -755,18 +755,18 @@ Auth Worker:
 
 ```jsonc
 {
-  "name": "leaflens-auth",
+  "name": "lextari-auth",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-02",
   "observability": { "enabled": true },
 
   "d1_databases": [
-    { "binding": "DB", "database_name": "leaflens", "database_id": "<id>" }
+    { "binding": "DB", "database_name": "lextari", "database_id": "<id>" }
   ],
 
   "vars": {
-    "JWT_ISSUER": "leaflens-auth",
-    "JWT_AUDIENCE": "leaflens-app",
+    "JWT_ISSUER": "lextari-auth",
+    "JWT_AUDIENCE": "lextari-app",
     "GOOGLE_CLIENT_IDS": "web-client-id,android-client-id,ios-client-id"
   },
 
@@ -782,10 +782,10 @@ Alembic is not used at runtime. D1 has its own migration system:
 
 ```bash
 # local
-uv run pywrangler d1 migrations apply leaflens --local
+uv run pywrangler d1 migrations apply lextari --local
 
 # remote
-uv run pywrangler d1 migrations apply leaflens --remote
+uv run pywrangler d1 migrations apply lextari --remote
 ```
 
 Keep migrations in `migrations/0001_init.sql`, `0002_....sql`. Never edit an applied migration; add a new one.
@@ -964,7 +964,7 @@ See [Section 7](#7-websocket-is-it-possible). Short version:
 
 ## 9. Free-Tier Strategy
 
-The free tier is viable for LeafLens because the app has low traffic and a small dataset. The only real risk is CPU time for password hashing.
+The free tier is viable for Lextari because the app has low traffic and a small dataset. The only real risk is CPU time for password hashing.
 
 ### 9.1 What is free
 
@@ -982,7 +982,7 @@ The free tier is viable for LeafLens because the app has low traffic and a small
 Do not trust local development. `wrangler dev` and `pywrangler dev` run on your machine and do not enforce the 10 ms CPU limit. Test the deployed Worker.
 
 1. Deploy the auth Worker with Argon2id at 19 MiB, t=2, p=1.
-2. Open Cloudflare Dashboard → Workers & Pages → `leaflens-auth` → Metrics → CPU Time.
+2. Open Cloudflare Dashboard → Workers & Pages → `lextari-auth` → Metrics → CPU Time.
 3. Send 30 login requests with a valid account. Record p50 and p99 CPU time.
 4. Check for HTTP 1102 errors or `Worker exceeded CPU time limit` in logs.
 5. Repeat after the Worker has been idle for 10 minutes (cold start).
@@ -1056,7 +1056,7 @@ Google OAuth is the lowest-friction free option if users have Google accounts. F
 
 ## 10. CI/CD and Deployment
 
-CI and CD are separate concerns. CI checks the code; CD publishes it. For LeafLens, use GitHub Actions for checks and Cloudflare Workers Builds for deployment. If you want everything in one place, use GitHub Actions with `cloudflare/wrangler-action` instead.
+CI and CD are separate concerns. CI checks the code; CD publishes it. For Lextari, use GitHub Actions for checks and Cloudflare Workers Builds for deployment. If you want everything in one place, use GitHub Actions with `cloudflare/wrangler-action` instead.
 
 ### 10.1 GitHub Actions for the Flutter repository
 
@@ -1116,7 +1116,7 @@ For each Worker, connect the repository in the Cloudflare dashboard and set:
 |---|---|---|---|
 | API Worker | Repository root | `uv sync` | `uv run pywrangler deploy` |
 | Auth Worker | Repository root (or `auth-worker/`) | `npm ci` | `npx wrangler deploy` |
-| D1 migrations | Same repository | Run once or in deploy | `pywrangler d1 migrations apply leaflens --remote` |
+| D1 migrations | Same repository | Run once or in deploy | `pywrangler d1 migrations apply lextari --remote` |
 
 If the build image does not include `uv`, use GitHub Actions with `astral-sh/setup-uv` and run `uv run pywrangler deploy`. Workers Builds is simpler when it works; GitHub Actions is more transparent and easier to debug.
 
@@ -1151,7 +1151,7 @@ Set secrets with `uv run pywrangler secret put NAME` or via the dashboard. Use s
 
 ## 11. Flutter Changes
 
-The Flutter auth surface is already wrapped in `LeafLensAuth`. That is the main reason the migration is contained. Keep the public API stable and replace the internals.
+The Flutter auth surface is already wrapped in `LextariAuth`. That is the main reason the migration is contained. Keep the public API stable and replace the internals.
 
 ### 11.1 File map
 
@@ -1202,9 +1202,9 @@ Add `google_sign_in`, configure OAuth client IDs, and send the **ID token** to t
 
 ```dotenv
 # .env.example
-AUTH_URL=https://leaflens-auth.example.com
-API_URL=https://leaflens-api.example.com
-WS_URL=wss://leaflens-api.example.com/api/v1/ws   # optional
+AUTH_URL=https://lextari-auth.example.com
+API_URL=https://lextari-api.example.com
+WS_URL=wss://lextari-api.example.com/api/v1/ws   # optional
 GOOGLE_SERVER_CLIENT_ID=xxxx.apps.googleusercontent.com
 ```
 
@@ -1290,7 +1290,7 @@ Remove `SUPABASE_URL` and `SUPABASE_ANON_KEY` from build configs and CI. Build w
 | Full Workers, lowest risk | Split Auth/API Workers + D1 | $0 or $5 | Drop WS first; add DO later. |
 | Email/password, no CPU risk | Workers Paid + Argon2 | $5/month | Simplest reliable password auth. |
 
-### 14.2 Recommended path for LeafLens FYP
+### 14.2 Recommended path for Lextari FYP
 
 1. **Week 1:** Deploy a hello-world Python API Worker; create D1; port devices list/register. Keep the app thin: D1 binding + `pyfetch`, no SQLAlchemy or global pools.
 2. **Week 1–2:** Port the ThingsBoard client to `pyfetch`; verify latest/history/RPC against the old API; measure per-route CPU.
@@ -1349,7 +1349,7 @@ CREATE TABLE user_devices (
   user_id TEXT NOT NULL,
   tb_device_id TEXT NOT NULL UNIQUE,
   device_name TEXT NOT NULL,
-  device_type TEXT NOT NULL DEFAULT 'leaflens-env',
+  device_type TEXT NOT NULL DEFAULT 'lextari-env',
   mac_address TEXT UNIQUE,
   created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
@@ -1372,11 +1372,11 @@ CREATE INDEX idx_otp_email ON otp_codes(email);
 
 ```bash
 # Create D1
-npx wrangler d1 create leaflens
+npx wrangler d1 create lextari
 
 # Migrations
-uv run pywrangler d1 migrations apply leaflens --local
-uv run pywrangler d1 migrations apply leaflens --remote
+uv run pywrangler d1 migrations apply lextari --local
+uv run pywrangler d1 migrations apply lextari --remote
 
 # Local dev (Python)
 uv run pywrangler dev
@@ -1430,4 +1430,4 @@ flutter build web --release --dart-define-from-file=.env
 
 ---
 
-*This guide is a technical advisory for the LeafLens final year project. It assumes no production users and no requirement to preserve Supabase accounts. Re-test CPU, D1 limits and Google OAuth configuration against the current Cloudflare and Google documentation before deployment.*
+*This guide is a technical advisory for the Lextari final year project. It assumes no production users and no requirement to preserve Supabase accounts. Re-test CPU, D1 limits and Google OAuth configuration against the current Cloudflare and Google documentation before deployment.*

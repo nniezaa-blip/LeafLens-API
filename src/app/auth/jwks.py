@@ -1,4 +1,4 @@
-"""Supabase JWKS verification using the Workers fetch API."""
+"""Access-token verification against the Lextari auth Worker's JWKS."""
 
 import time
 from typing import Any
@@ -32,8 +32,13 @@ def _select_key(jwks: dict[str, Any], kid: str | None) -> dict[str, Any]:
     raise jwt.InvalidTokenError("Signing key not found")
 
 
-async def verify_supabase_token(token: str, jwks_url: str, supabase_url: str) -> dict[str, Any]:
-    """Verify a Supabase JWT using a cached JWKS public key.
+async def verify_access_token(
+    token: str,
+    jwks_url: str,
+    issuer: str,
+    audience: str,
+) -> dict[str, Any]:
+    """Verify an access token with a cached JWKS public key.
 
     Returns the decoded payload (contains ``sub`` = user_id, ``email``, etc.).
     Raises ``jwt.InvalidTokenError`` on failure.
@@ -44,13 +49,12 @@ async def verify_supabase_token(token: str, jwks_url: str, supabase_url: str) ->
     algorithm = str(key_data.get("alg") or "RS256")
     signing_key = jwt.PyJWK(key_data, algorithm=algorithm)
 
-    issuer = f"{supabase_url}/auth/v1" if supabase_url else None
     payload = jwt.decode(
         token,
         signing_key.key,
         algorithms=[algorithm],
-        audience="authenticated",
-        issuer=issuer,
+        audience=audience or None,
+        issuer=issuer or None,
     )
     result: dict[str, Any] = payload
     return result

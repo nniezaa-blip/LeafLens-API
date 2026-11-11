@@ -1,8 +1,9 @@
 # Local Cloudflare Workers variables. Copy to .dev.vars (gitignored).
 TB_URL=http://localhost:8080
 TB_API_KEY=your_thingsboard_api_key_here
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_JWKS_URL=
+AUTH_JWKS_URL=http://localhost:8788/.well-known/jwks.json
+AUTH_ISSUER=lextari-auth
+AUTH_AUDIENCE=lextari-app
 DEBUG=true
 CORS_ORIGINS=http://localhost:3000
 WS_POLL_INTERVAL=5

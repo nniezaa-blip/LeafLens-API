@@ -1,4 +1,4 @@
-"""FastAPI dependency for Supabase JWT verification."""
+"""FastAPI dependency for access-token verification."""
 
 import logging
 from typing import Any
@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.auth.jwks import verify_supabase_token
+from app.auth.jwks import verify_access_token
 from app.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -18,21 +18,22 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
-    """Extract and verify a Supabase JWT from the Authorization header.
+    """Extract and verify a Lextari access token from the Authorization header.
 
     Returns the decoded token payload with ``sub`` (user_id), ``email``, etc.
     """
-    if not settings.supabase_url and not settings.supabase_jwks_url:
+    if not settings.jwks_url:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Auth not configured",
         )
 
     try:
-        return await verify_supabase_token(
+        return await verify_access_token(
             credentials.credentials,
             settings.jwks_url,
-            settings.supabase_url,
+            settings.auth_issuer,
+            settings.auth_audience,
         )
     except Exception:
         logger.warning("JWT verification failed", exc_info=True)

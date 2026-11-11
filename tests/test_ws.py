@@ -22,7 +22,7 @@ def test_ws_first_message_auth_and_initial_snapshot(monkeypatch) -> None:
     async def resolve_device(user_id: str, db: object) -> str:
         return "tb-device-1"
 
-    monkeypatch.setattr(ws_router, "verify_supabase_token", verify)
+    monkeypatch.setattr(ws_router, "verify_access_token", verify)
     monkeypatch.setattr(ws_router, "_resolve_device_id", resolve_device)
     monkeypatch.setattr(ws_router, "_make_tb_client", lambda settings: tb)
 

@@ -18,7 +18,7 @@ jobs:
     env:
       DEBUG: "true"
       TB_API_KEY: test-key
-      SUPABASE_URL: https://test.supabase.co
+      AUTH_JWKS_URL: http://localhost:8788/.well-known/jwks.json
 
     steps:
       - uses: actions/checkout@v4
