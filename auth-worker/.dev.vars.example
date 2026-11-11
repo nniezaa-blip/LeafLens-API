@@ -1,0 +1,4 @@
+# Local secrets for the Lextari auth Worker. Copy to .dev.vars and run `bun run keys:dev`.
+JWT_PRIVATE_JWK=
+JWT_PUBLIC_JWKS=
+PASSWORD_PEPPER=
