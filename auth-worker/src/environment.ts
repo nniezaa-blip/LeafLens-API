@@ -6,6 +6,7 @@ export interface Bindings {
 	ARGON2_TIME_COST: string;
 	CORS_ORIGINS: string;
 	DB: D1Database;
+	GOOGLE_CLIENT_IDS: string;
 	JWT_AUDIENCE: string;
 	JWT_ISSUER: string;
 	JWT_PRIVATE_JWK: string;

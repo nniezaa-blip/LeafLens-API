@@ -10,6 +10,7 @@ export const configSchema = z
 		ARGON2_MEMORY_KIB: positiveInt,
 		ARGON2_TIME_COST: positiveInt,
 		CORS_ORIGINS: z.string(),
+		GOOGLE_CLIENT_IDS: z.string().default(''),
 		JWT_AUDIENCE: z.string().min(1),
 		JWT_ISSUER: z.string().min(1),
 		JWT_PRIVATE_JWK: jsonString(privateJwkSchema),
@@ -27,6 +28,9 @@ export const configSchema = z
 		corsOrigins: environment.CORS_ORIGINS.split(',')
 			.map((origin) => origin.trim())
 			.filter((origin) => origin.length > 0),
+		googleClientIds: environment.GOOGLE_CLIENT_IDS.split(',')
+			.map((clientId) => clientId.trim())
+			.filter((clientId) => clientId.length > 0),
 		jwt: {
 			audience: environment.JWT_AUDIENCE,
 			issuer: environment.JWT_ISSUER,

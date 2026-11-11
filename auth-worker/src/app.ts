@@ -7,6 +7,7 @@ import type { AppEnvironment } from './environment.ts';
 
 import { getConfig } from './config/get-config.ts';
 import { authRoutes } from './routes/auth.ts';
+import { googleRoutes } from './routes/google.ts';
 import { wellKnownRoutes } from './routes/jwks.ts';
 
 export const app = new Hono<AppEnvironment>()
@@ -29,6 +30,7 @@ export const app = new Hono<AppEnvironment>()
 	)
 	.get('/health', (context) => context.json({ status: 'ok' }))
 	.route('/auth', authRoutes)
+	.route('/auth', googleRoutes)
 	.route('/.well-known', wellKnownRoutes)
 	.notFound((context) => context.json({ error: 'not found' }, 404))
 	.onError((error, context) => {

@@ -2,3 +2,6 @@
 JWT_PRIVATE_JWK=
 JWT_PUBLIC_JWKS=
 PASSWORD_PEPPER=
+
+# Comma-separated Google OAuth client IDs accepted as id_token audiences.
+GOOGLE_CLIENT_IDS=

@@ -16,7 +16,8 @@
 		"ARGON2_MEMORY_KIB": 19456,
 		"ARGON2_TIME_COST": 2,
 		"MAX_JSON_BYTES": 16384,
-		"CORS_ORIGINS": "http://localhost:3000"
+		"CORS_ORIGINS": "http://localhost:3000",
+		"GOOGLE_CLIENT_IDS": "895978130173-70mnadpnbd08c1an6250lm5mg2pc13ct.apps.googleusercontent.com,895978130173-rcgggovg11jj6d1unudbs2n6iea2sbp7.apps.googleusercontent.com"
 	},
 	"secrets": {
 		"required": ["JWT_PRIVATE_JWK", "JWT_PUBLIC_JWKS", "PASSWORD_PEPPER"]
