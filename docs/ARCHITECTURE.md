@@ -1,6 +1,6 @@
-# LeafLens API Architecture
+# Lextari API Architecture
 
-> FastAPI backend for LeafLens. Proxies ThingsBoard, verifies Supabase JWT, computes Growth Health Score.
+> FastAPI backend for Lextari. Proxies ThingsBoard, verifies Supabase JWT, computes Growth Health Score.
 > Part of Bachelor of Computer Science FYP at IIUM.
 
 ---
@@ -12,25 +12,25 @@
                     │                 Cloud / VPS                 │
                     │                                             │
   ┌──────────┐     │  ┌───────────┐     ┌──────────────────┐     │     ┌──────────┐
-  │  ESP32   │─────┼─>│ ThingsBoard│<────│  leaflens-api    │<────┼─────│  Flutter  │
-  │ (MQTT)   │     │  │  :8080    │     │  (FastAPI) :8000 │     │     │   App    │
+  │  ESP32   │─────┼─>│ ThingsBoard│<────│  lextari-api    │<────┼─────│  Flutter  │
+  │ (MQTT)   │     │  │  :8080    │     │ (Workers)        │     │     │   App    │
   └──────────┘     │  └───────────┘     └──────────────────┘     │     └──────────┘
        │           │         ▲                    │               │          │
        │           │         │                    │               │          │
   Sensors +        │    TB REST API          DB + Auth            │     REST + WS
-  Actuators        │    TB WebSocket         GHS Compute          │     JWT
+  Actuators        │    TB REST poll         GHS Compute          │     JWT
                     │                                             │
                     │  ┌───────────┐     ┌──────────────────┐     │
-                    │  │ PostgreSQL│     │    Supabase      │     │
-                    │  │  :5432    │     │  (Auth only)     │     │
+                    │  │    D1     │     │    Supabase      │     │
+                    │  │ (SQLite)  │     │  (Auth only)     │     │
                     │  └───────────┘     └──────────────────┘     │
                     └─────────────────────────────────────────────┘
 ```
 
 **Rules:**
-- Flutter NEVER talks to ThingsBoard directly. Always through leaflens-api.
-- leaflens-api is the ONLY service that holds TB_API_KEY.
-- Flutter holds Supabase JWT (via SDK). leaflens-api verifies it.
+- Flutter NEVER talks to ThingsBoard directly. Always through lextari-api.
+- lextari-api is the ONLY service that holds TB_API_KEY.
+- Flutter holds Supabase JWT (via SDK). lextari-api verifies it.
 
 ---
 
@@ -39,7 +39,7 @@
 ### 1. Authenticated Request (Flutter -> API)
 
 ```
-Flutter                    leaflens-api                 ThingsBoard
+Flutter                    lextari-api                 ThingsBoard
   │                            │                            │
   │  GET /api/v1/devices       │                            │
   │  Authorization: Bearer jwt │                            │
@@ -59,7 +59,7 @@ Flutter                    leaflens-api                 ThingsBoard
 ### 2. Device Provisioning (ESP32 -> API)
 
 ```
-ESP32                       leaflens-api                 ThingsBoard
+ESP32                       lextari-api                 ThingsBoard
   │                            │                            │
   │  POST /api/v1/devices/     │                            │
   │       register             │                            │
@@ -84,7 +84,7 @@ ESP32                       leaflens-api                 ThingsBoard
 ### 3. RPC Command (Flutter -> ESP32)
 
 ```
-Flutter                    leaflens-api             ThingsBoard          ESP32
+Flutter                    lextari-api             ThingsBoard          ESP32
   │                            │                        │                  │
   │  POST /api/v1/rpc/{id}     │                        │                  │
   │  {method: "water"}         │                        │                  │
@@ -105,7 +105,7 @@ Flutter                    leaflens-api             ThingsBoard          ESP32
 | Data | Stored Where | Why |
 |------|-------------|-----|
 | Sensor telemetry | ThingsBoard | Time-series optimized, MQTT ingestion |
-| Device-to-user mapping | PostgreSQL (user_devices) | Relational, queried by user_id |
+| Device-to-user mapping | D1 (`user_devices`) | Relational, queried by user_id |
 | User accounts | Supabase | Auth provider, JWT issuance |
 | GHS score | Computed on-demand | No storage needed, derived from telemetry |
 | Actuator state | ThingsBoard shared attributes | Real-time, synced to ESP32 |
@@ -118,12 +118,11 @@ Flutter                    leaflens-api             ThingsBoard          ESP32
 |-------|-----------|------|
 | API Framework | FastAPI 0.115+ | Async HTTP/WebSocket server |
 | Auth | Supabase JWT + JWKS | Token verification (not issuance) |
-| Database | PostgreSQL + asyncpg | Device-user mapping |
-| ORM | SQLAlchemy 2.0 async | Model definitions, query builder |
-| Migrations | Alembic | Schema versioning |
-| HTTP Client | httpx async | ThingsBoard REST proxy |
-| WebSocket | websockets 14+ | TB real-time relay |
-| Config | pydantic-settings | Typed env vars, validation |
+| Database | Cloudflare D1 | Device-user mapping |
+| Migrations | `wrangler d1 migrations` | Schema versioning |
+| HTTP Client | `pyodide.http.pyfetch` | ThingsBoard REST proxy |
+| WebSocket | FastAPI + TB REST polling | Telemetry relay to Flutter |
+| Config | Request-scoped dataclass | Workers bindings + env fallback |
+| Runtime | Cloudflare Workers (Python) | Production deployment |
 | Linting | ruff (27 rules) + mypy strict | Code quality |
 | Testing | pytest + pytest-asyncio | Async test support |
-| Container | Docker multi-stage | Production deployment |

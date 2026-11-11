@@ -1,4 +1,4 @@
-# LeafLens API Reference
+# Lextari API Reference
 
 All endpoints are prefixed with `/api/v1`. Auth endpoints use `Authorization: Bearer <jwt>` header.
 
@@ -6,7 +6,7 @@ All endpoints are prefixed with `/api/v1`. Auth endpoints use `Authorization: Be
 
 ## Health Probes
 
-No auth, no rate limit.
+No auth. Rate limiting is handled by Cloudflare edge rules.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -83,7 +83,7 @@ Response: 200
     "id": 1,
     "tb_device_id": "abc-123",
     "device_name": "Living Room Plant",
-    "device_type": "leaflens-env",
+    "device_type": "lextari-env",
     "latest_readings": {
       "soil_moisture": 55.0,
       "temperature": 24.0,
@@ -102,7 +102,7 @@ Response: 200
   "id": 1,
   "tb_device_id": "abc-123",
   "device_name": "Living Room Plant",
-  "device_type": "leaflens-env",
+  "device_type": "lextari-env",
   "latest_readings": {
     "soil_moisture": 55.0,
     "temperature": 24.0,
@@ -255,22 +255,31 @@ Response: 200 (device offline, command queued)
 
 | Protocol | Path | Auth | Description |
 |----------|------|------|-------------|
-| WS | `/api/v1/ws?token=<jwt>` | JWT (query param) | Real-time telemetry |
+| WS | `/ws` or `/api/v1/ws?token=<jwt>` | JWT (query param or first message) | Real-time telemetry |
 
 Close codes: `4001` (missing token), `4003` (invalid token)
 
 ### Messages
 
+The server polls ThingsBoard every `WS_POLL_INTERVAL` seconds and pushes changes.
+
 ```
 Client -> Server:
+  {"type": "auth", "token": "<supabase_jwt>"}
   {"type": "subscribe", "device_id": "abc-123"}
   {"type": "ping"}
 
 Server -> Client:
+  {"type": "auth_ok"}
   {"type": "subscribed", "device_id": "abc-123"}
   {"type": "pong"}
-  {"type": "telemetry", "key": "soil_moisture", "value": 55.0, "ts": 1716800000000}
+  {"type": "telemetry", "soilMoisture": 55.0, "temperature": 23.0, "humidity": 65.0}
+  {"type": "ghs", "score": 100.0, "status": "Optimal"}
 ```
+
+`auth` is only required when the token is not supplied as a query parameter.
+On connect the server auto-subscribes to the user's first linked device and
+sends an initial telemetry snapshot plus the current health score.
 
 ---
 
@@ -290,8 +299,7 @@ All errors follow the same shape:
 |--------|------|------|
 | 401 | AuthError | Invalid or expired JWT |
 | 404 | DeviceNotFoundError | Device not found |
-| 429 | RateLimitError | >60 requests/minute |
-| 500 | LeafLensError | Auth not configured |
+| 500 | LextariError | Auth not configured |
 | 502 | ThingsBoardError | TB unavailable |
 | 503 | ReadyResponse | Health check failed |
 

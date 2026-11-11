@@ -9,6 +9,7 @@ build/
 
 # Virtual environment
 .venv/
+.venv-workers/
 
 # IDE
 .vscode/
@@ -19,6 +20,14 @@ build/
 # Environment
 .env
 .env.*
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# Cloudflare Workers
+.wrangler/
+node_modules/
+python_modules/
 
 # Testing
 .pytest_cache/

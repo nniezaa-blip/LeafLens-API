@@ -1,12 +1,13 @@
-# LeafLens API
+# Lextari API
 
 <img src="https://img.shields.io/badge/version-1.0.0-5BC0DE?style=flat-square" alt="Version">&nbsp;
-<img src="https://img.shields.io/badge/Python-3.12-5BC0DE?style=flat-square&logo=python&logoColor=white" alt="Python">&nbsp;
+<img src="https://img.shields.io/badge/Python-3.13-5BC0DE?style=flat-square&logo=python&logoColor=white" alt="Python">&nbsp;
 <img src="https://img.shields.io/badge/FastAPI-0.115-5BC0DE?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI">&nbsp;
+<img src="https://img.shields.io/badge/Cloudflare-Workers-F38020?style=flat-square&logo=cloudflare&logoColor=white" alt="Cloudflare Workers">&nbsp;
 <img src="https://img.shields.io/badge/ThingsBoard-IoT-5BC0DE?style=flat-square" alt="ThingsBoard">&nbsp;
 <img src="https://img.shields.io/badge/Supabase-Auth-5BC0DE?style=flat-square" alt="Supabase">
 
-**FastAPI Backend for LeafLens Plant Health Monitoring System**
+**FastAPI Backend for Lextari Plant Health Monitoring System**
 
 Part of Final Year Project — Bachelor of Computer Science, IIUM
 **Supervisor:** Ts. Dr. Ahmad Anwar bin Zainuddin
@@ -15,7 +16,7 @@ Part of Final Year Project — Bachelor of Computer Science, IIUM
 
 ## Overview
 
-LeafLens API is the backend gateway for the LeafLens plant health monitoring
+Lextari API is the backend gateway for the Lextari plant health monitoring
 system. It sits between the Flutter mobile app and ThingsBoard IoT platform,
 handling authentication, telemetry proxying, device management, and Growth
 Health Score computation.
@@ -25,7 +26,7 @@ Health Score computation.
 - Proxies ThingsBoard REST API — Flutter never talks to ThingsBoard directly
 - Relays RPC commands — Flutter -> API -> ThingsBoard -> ESP32
 - Computes Growth Health Score (GHS) — weighted composite of sensor readings
-- WebSocket relay — real-time telemetry from TB to Flutter
+- WebSocket relay — polls TB REST and pushes telemetry changes to Flutter
 
 **What it does NOT do:**
 - Does not store sensor data (ThingsBoard handles that)
@@ -38,20 +39,20 @@ Health Score computation.
 
 ```
                     ┌─────────────────────────────────────────────┐
-                    │                 Cloud / VPS                 │
+                    │              Cloudflare Workers             │
                     │                                             │
   ┌──────────┐     │  ┌───────────┐     ┌──────────────────┐     │     ┌──────────┐
-  │  ESP32   │─────┼─>│ ThingsBoard│<────│  leaflens-api    │<────┼─────│  Flutter  │
-  │ (MQTT)   │     │  │  :8080    │     │  (FastAPI) :8000 │     │     │   App    │
+  │  ESP32   │─────┼─>│ ThingsBoard│<────│  lextari-api    │<────┼─────│  Flutter  │
+  │ (MQTT)   │     │  │  :8080    │     │  (FastAPI)       │     │     │   App    │
   └──────────┘     │  └───────────┘     └──────────────────┘     │     └──────────┘
        │           │         ▲                    │               │          │
        │           │         │                    │               │          │
-  Sensors +        │    TB REST API          DB + Auth            │     REST + WS
-  Actuators        │    TB WebSocket         GHS Compute          │     JWT
+  Sensors +        │    TB REST API          D1 + Auth            │     REST + WS
+  Actuators        │                         GHS Compute          │     JWT
                     │                                             │
                     │  ┌───────────┐     ┌──────────────────┐     │
-                    │  │ PostgreSQL│     │    Supabase      │     │
-                    │  │  :5432    │     │  (Auth only)     │     │
+                    │  │    D1     │     │    Supabase      │     │
+                    │  │ (SQLite)  │     │  (Auth only)     │     │
                     │  └───────────┘     └──────────────────┘     │
                     └─────────────────────────────────────────────┘
 ```
@@ -68,19 +69,20 @@ Full architecture details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 | [API Reference](docs/API_REFERENCE.md) | All endpoints with request/response examples |
 | [Conventions](docs/CONVENTIONS.md) | Coding standards, lint rules, commit format |
 | [Project Structure](docs/PROJECT_STRUCTURE.md) | Directory layout, where to put code |
-| [Error Handling](docs/ERROR_HANDLING.md) | Error hierarchy, Sentry integration |
+| [Error Handling](docs/ERROR_HANDLING.md) | Error hierarchy, Workers logging |
 | [Testing](docs/TESTING.md) | How to run and write tests |
 | [GHS Algorithm](docs/GHS_ALGORITHM.md) | Growth Health Score formula and thresholds |
 | [Domain Models](docs/DOMAIN_MODELS.md) | DB models, schemas, enums |
 | [Environment](docs/ENVIRONMENT.md) | All env vars with descriptions |
-| [Deployment](docs/DEPLOYMENT.md) | Local, Docker, mise setup |
+| [Deployment](docs/DEPLOYMENT.md) | Local Workers, D1, and CI/CD setup |
 
 ---
 
 ## Prerequisites
 
-- **Python 3.12+** (via mise or system)
-- **PostgreSQL 16+**
+- **Python 3.13+** and **uv 0.13.4+**
+- **Node.js 22+** (for local `pywrangler`)
+- **Cloudflare account** with Workers + D1
 - **ThingsBoard CE** (Docker or self-hosted)
 - **Supabase** (project for auth)
 
@@ -91,48 +93,44 @@ Full architecture details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 ### 1. Clone and install
 
 ```bash
-cd ~/Personal/Dev/leaflens-api
+cd ~/Personal/Dev/lextari-api
 
-# Python version (via mise)
-mise use python@3.12
+# Python + Node versions (via mise)
+mise install
 eval "$(mise activate zsh)"
 
-# Virtual environment
-python -m venv .venv
-source .venv/bin/activate
-
 # Dependencies
-pip install -r requirements-dev.txt
+uv sync
 
 # Pre-commit hooks
-pre-commit install --hook-type pre-commit --hook-type commit-msg
+uv run pre-commit install --hook-type pre-commit --hook-type commit-msg
 ```
 
 ### 2. Configure
 
 ```bash
-cp .env.example .env
-# Edit .env with your TB_API_KEY, SUPABASE_URL, etc.
+cp .dev.vars.example .dev.vars
+# Edit .dev.vars with your TB_API_KEY, SUPABASE_URL, etc.
 ```
 
 ### 3. Run
 
 ```bash
-# Development (auto-reload)
-uvicorn app.main:app --reload --port 8000
+# Cloudflare Workers runtime (recommended)
+uv run pywrangler dev
 
-# Production
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+# Plain FastAPI fallback (uses the httpx client fallback)
+uv run uvicorn app.main:app --app-dir src --reload --port 8000
 ```
 
 ### 4. Verify
 
 ```bash
 # Health probe
-curl http://localhost:8000/api/v1/health
+curl http://localhost:8787/api/v1/health
 
 # Swagger UI (debug mode only)
-open http://localhost:8000/docs
+open http://localhost:8787/docs
 ```
 
 ---
@@ -140,18 +138,20 @@ open http://localhost:8000/docs
 ## Running Tests
 
 ```bash
-DEBUG=true TB_API_KEY=test python -m pytest -v
+DEBUG=true TB_API_KEY=test SUPABASE_URL=https://test.supabase.co uv run pytest
 ```
 
 ### Test summary
 
 ```
-tests/test_auth.py       — 1 test  (health probe)
-tests/test_devices.py    — 1 test  (device list)
-tests/test_ghs.py        — 3 tests (GHS computation)
-tests/test_health.py     — 1 test  (health endpoint)
-                        ─────────
-                        6 passed
+tests/test_auth.py          — 1 test  (health probe)
+tests/test_client_compat.py — 5 tests (Flutter-facing routes)
+tests/test_devices.py       — 1 test  (device list)
+tests/test_ghs.py           — 3 tests (GHS computation)
+tests/test_health.py        — 1 test  (health endpoint)
+tests/test_ws.py            — 1 test  (WebSocket contract)
+                            ─────────
+                            12 passed
 ```
 
 ---
@@ -159,25 +159,28 @@ tests/test_health.py     — 1 test  (health endpoint)
 ## Project Structure
 
 ```
-leaflens-api/
-├── app/
-│   ├── main.py             # App factory + lifespan
-│   ├── config.py           # pydantic-settings
-│   ├── middleware.py        # Request ID + rate limiter
-│   ├── auth/               # JWKS verification
-│   ├── clients/            # ThingsBoard REST + WS
-│   ├── db/                 # SQLAlchemy models
-│   ├── routers/            # API endpoints
-│   ├── schemas/            # Pydantic request/response
-│   ├── services/           # GHS computation
-│   └── utils/              # Error hierarchy
-├── tests/                  # pytest async tests
-├── alembic/                # DB migrations
+lextari-api/
+├── src/
+│   ├── worker.py           # Cloudflare Workers entrypoint
+│   └── app/
+│       ├── main.py         # App factory + health probes
+│       ├── config.py       # Request-scoped Settings
+│       ├── middleware.py   # Request ID + access logging
+│       ├── auth/           # JWKS verification
+│       ├── clients/        # pyfetch HTTP + ThingsBoard REST
+│       ├── db/             # D1 helpers + row models
+│       ├── routers/        # API endpoints
+│       ├── schemas/        # Pydantic request/response
+│       ├── services/       # GHS computation
+│       └── utils/          # Error hierarchy
+├── tests/                  # pytest async tests + fakes
 ├── docs/                   # Documentation
-├── pyproject.toml          # ruff + mypy + pytest config
+├── migrations/             # D1 migrations
+├── .github/workflows/      # CI + Cloudflare deploy
+├── wrangler.jsonc          # Worker config (lextari-api)
+├── pyproject.toml          # deps + ruff + mypy + pytest config
 ├── .pre-commit-config.yaml # Git hooks
-├── Dockerfile              # Multi-stage build
-└── docker-compose.yml      # Full stack
+└── docker-compose.yml      # Local ThingsBoard stack
 ```
 
 Full layout: [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md)
@@ -188,16 +191,16 @@ Full layout: [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md)
 
 ```bash
 # Lint
-ruff check .
+uv run ruff check .
 
 # Format
-ruff format .
+uv run ruff format .
 
 # Type check
-mypy app/
+uv run mypy src/app
 
 # All pre-commit hooks
-pre-commit run --all-files
+uv run pre-commit run --all-files
 ```
 
 **27 rule sets enabled.** Zero warnings, zero errors.
@@ -255,21 +258,35 @@ Full algorithm: [docs/GHS_ALGORITHM.md](docs/GHS_ALGORITHM.md)
 ## Docker
 
 ```bash
-# Full stack (PostgreSQL + FastAPI + ThingsBoard)
+# Local ThingsBoard + PostgreSQL (API runs on Workers)
 docker compose up -d
 
-# Build only
-docker compose build fastapi
-
 # Logs
-docker compose logs -f fastapi
+docker compose logs -f thingsboard
 ```
+
+---
+
+## Cloudflare Workers (CI/CD)
+
+Pushes to `main` run CI (`ruff`, `mypy`, `pytest`) and then deploy the
+**`lextari-api`** Worker to Cloudflare using GitHub Actions and `pywrangler`.
+
+```bash
+# Local Worker development
+uv sync
+cp .dev.vars.example .dev.vars
+uv run pywrangler dev
+```
+
+Setup, required secrets and the D1 database name are documented in
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#cloudflare-workers-cicd).
 
 ---
 
 ## Hardware
 
-This backend supports the LeafLens dual-ESP32 system:
+This backend supports the Lextari dual-ESP32 system:
 
 | Sensor | Reading | Key |
 |--------|---------|-----|
@@ -290,8 +307,8 @@ This backend supports the LeafLens dual-ESP32 system:
 
 | Repository | Description |
 |-----------|-------------|
-| [LeafLens](https://github.com/mishoshup/LeafLens) | Flutter mobile app |
-| LeafLens API | FastAPI backend (this repo) |
+| [Lextari](https://github.com/mishoshup/Lextari) | Flutter mobile app |
+| Lextari API | FastAPI backend (this repo) |
 | [ThingsBoard](https://github.com/thingsboard/thingsboard) | IoT platform |
 
 ---

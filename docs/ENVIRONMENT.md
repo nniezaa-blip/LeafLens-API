@@ -1,6 +1,11 @@
-# LeafLens API Environment Variables
+# Lextari API Environment Variables
 
-Copy `.env.example` to `.env` and fill in values. Never commit `.env`.
+Workers bindings are read from the request scope (`request.scope["env"]`), with
+a global `workers.env` fallback for app-level settings such as CORS and docs.
+For local FastAPI runs, the same names are read from `.env` / `os.environ`.
+
+Copy `.dev.vars.example` to `.dev.vars` for `pywrangler dev`, or
+`.env.example` to `.env` for `uvicorn`. Never commit either file.
 
 ---
 
@@ -11,7 +16,6 @@ Copy `.env.example` to `.env` and fill in values. Never commit `.env`.
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | SUPABASE_URL | Yes (prod) | "" | `https://xyz.supabase.co` |
-| SUPABASE_ANON_KEY | No | "" | Public anon key |
 | SUPABASE_JWKS_URL | No | Auto-derived | Override JWKS endpoint |
 
 ### ThingsBoard
@@ -19,42 +23,38 @@ Copy `.env.example` to `.env` and fill in values. Never commit `.env`.
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | TB_URL | No | http://localhost:8080 | ThingsBoard base URL |
-| TB_API_KEY | Yes | "" | API key (Tenant Settings) |
-| TB_USERNAME | Yes | "" | Service account email |
-| TB_PASSWORD | Yes | "" | Service account password |
-
-### PostgreSQL
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| DATABASE_URL | Yes | postgresql+asyncpg://... | Connection string |
+| TB_API_KEY | Yes | "" | API key (Tenant Settings); store as a Worker secret |
 
 ### App
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| DEBUG | No | false | Swagger UI, skip env validation |
-| CORS_ORIGINS | No | ["http://localhost:3000"] | JSON array |
-| WS_KEEPALIVE_INTERVAL | No | 30 | Seconds between TB pings |
-| SENTRY_DSN | No | "" | Error tracking DSN |
+| DEBUG | No | false | Swagger UI + debug logging |
+| CORS_ORIGINS | No | http://localhost:3000 | Comma-separated allowed origins |
+| WS_POLL_INTERVAL | No | 5 | Seconds between ThingsBoard polls |
+
+### Cloudflare bindings (not env vars)
+
+| Binding | Type | Description |
+|---------|------|-------------|
+| DB | D1 | `user_devices` and future tables |
 
 ---
 
 ## Getting Your ThingsBoard API Key
 
 1. ThingsBoard UI -> API Keys (bottom-left sidebar)
-2. Add New API Key -> name it `leaflens-backend`
+2. Add New API Key -> name it `lextari-backend`
 3. Copy the key value
-4. Set as `TB_API_KEY` in `.env`
+4. Set as `TB_API_KEY` (Worker secret in production)
 
 The API key gives full tenant-level access. Keep it secret.
 
 ---
 
-## Startup Validation
+## Validation
 
-The app validates required env vars on startup in non-debug mode:
-- Missing `TB_API_KEY` -> exits with error
-- Missing `SUPABASE_URL` -> exits with error
-
-In debug mode (`DEBUG=true`), validation is skipped.
+There is no process-level startup validation in Workers, because bindings are
+request-scoped. Endpoints that need auth return `500 Auth not configured` when
+`SUPABASE_URL` and `SUPABASE_JWKS_URL` are both empty, and D1-backed endpoints
+return `503` when the `DB` binding is missing.

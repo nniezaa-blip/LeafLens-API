@@ -1,4 +1,4 @@
-# LeafLens Growth Health Score Algorithm
+# Lextari Growth Health Score Algorithm
 
 > Weighted composite of soil moisture, temperature, and humidity against species-specific thresholds.
 
@@ -76,7 +76,7 @@ score, status, components = compute_health_score(
 
 ## Adding Species
 
-Add to `_DEFAULT_THRESHOLDS` in `app/services/ghs.py`:
+Add to `_DEFAULT_THRESHOLDS` in `src/app/services/ghs.py`:
 
 ```python
 _DEFAULT_THRESHOLDS = {

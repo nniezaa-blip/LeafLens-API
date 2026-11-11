@@ -1,11 +1,31 @@
 [project]
-name = "leaflens-api"
+name = "lextari-api"
 version = "1.0.0"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.115.0",
+    "pyjwt[crypto]>=2.10.0",
+    "pydantic>=2.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "commitizen>=4.0.0",
+    "httpx>=0.28.0",
+    "mypy>=1.14.0",
+    "pre-commit>=4.0.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.8.0",
+    "uvicorn[standard]>=0.34.0",
+    "workers-py",
+    "workers-runtime-sdk",
+]
 
 [tool.ruff]
 line-length = 99
-target-version = "py312"
+target-version = "py313"
+extend-exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = [
@@ -40,11 +60,12 @@ select = [
 ignore = [
     "E501",    # line too long — handled by formatter
     "PLR0913", # too many arguments — FastAPI Depends makes this noisy
+    "PLR0917", # too many positional arguments — client method signatures
     "PLR2004", # magic values — fine in tests and threshold constants
     "S101",    # assert in tests is fine
     "B008",    # FastAPI Depends() in function signatures — standard pattern
     "PLW0603", # global for singletons — standard pattern
-    "PLC0415", # conditional imports (lifespan, sentry) — intentional
+    "PLC0415", # conditional imports (Workers/httpx fallbacks) — intentional
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -59,7 +80,8 @@ indent-style = "space"
 docstring-code-format = true
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
+mypy_path = "src"
 strict = true
 plugins = ["pydantic.mypy"]
 
@@ -78,16 +100,22 @@ extra_checks = true
 
 [[tool.mypy.overrides]]
 module = [
-    "websockets.*",
     "jwt.*",
-    "httpx.*",
+    "pyodide.*",
+    "workers.*",
 ]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
+pythonpath = ["src"]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
 testpaths = ["tests"]
 addopts = "-v --tb=short --strict-markers -x"
+
+[tool.uv]
+package = false
 
 [tool.commitizen]
 name = "cz_conventional_commits"

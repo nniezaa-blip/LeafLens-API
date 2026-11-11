@@ -1,31 +1,29 @@
 """GHS endpoint tests."""
 
-from unittest.mock import AsyncMock
-
 import pytest
 from httpx import AsyncClient
 
 from app.auth.dependencies import get_current_user
+from app.clients.thingsboard import get_tb_client
+from app.main import app
+from tests.fakes import FakeThingsBoard
 
 
 @pytest.mark.asyncio
 async def test_health_score(client: AsyncClient) -> None:
     """Health score endpoint returns GHS."""
-    mock_tb = AsyncMock()
-    mock_tb.get_latest_telemetry.return_value = {
+    tb = FakeThingsBoard()
+    tb.latest = {
         "soil_moisture": 55.0,
         "temperature": 23.0,
         "humidity": 65.0,
     }
 
-    from app.clients.thingsboard import get_tb_client
-    from app.main import app
-
     app.dependency_overrides[get_current_user] = lambda: {
         "sub": "test-user-id",
         "email": "test@test.com",
     }
-    app.dependency_overrides[get_tb_client] = lambda: mock_tb
+    app.dependency_overrides[get_tb_client] = lambda: tb
 
     try:
         resp = await client.get(

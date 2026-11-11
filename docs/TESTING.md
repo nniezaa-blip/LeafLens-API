@@ -1,26 +1,21 @@
-# LeafLens API Testing Guide
+# Lextari API Testing Guide
 
-> 6 tests. pytest + pytest-asyncio. Async test client via httpx ASGITransport.
+> 12 tests. pytest + pytest-asyncio. Async test client via httpx ASGITransport.
 
 ---
 
 ## Running Tests
 
 ```bash
-# Activate venv
-source .venv/bin/activate
-
 # Run all tests
-DEBUG=true TB_API_KEY=test python -m pytest -v
+DEBUG=true TB_API_KEY=test SUPABASE_URL=https://test.supabase.co uv run pytest
 
 # Run specific file
-DEBUG=true TB_API_KEY=test python -m pytest tests/test_ghs.py -v
-
-# Run with coverage
-DEBUG=true TB_API_KEY=test python -m pytest --cov=app
+DEBUG=true TB_API_KEY=test SUPABASE_URL=https://test.supabase.co uv run pytest tests/test_ghs.py -v
 ```
 
-**Why DEBUG=true?** Config validator exits on missing env vars in non-debug mode. Tests don't need real TB/Supabase.
+**Why the env vars?** `app` is created at import time, and `DEBUG=true`
+enables Swagger. Tests use fakes and never call real TB/Supabase.
 
 ---
 
@@ -28,11 +23,14 @@ DEBUG=true TB_API_KEY=test python -m pytest --cov=app
 
 ```
 tests/
-├── conftest.py        # Shared fixtures (async client)
-├── test_auth.py       # Health probe
-├── test_devices.py    # Device list endpoint
-├── test_ghs.py        # GHS unit tests (pure computation)
-└── test_health.py     # Health score endpoint
+├── conftest.py          # Shared fixtures (async client)
+├── fakes.py             # FakeD1 + FakeThingsBoard
+├── test_auth.py         # Health probe
+├── test_client_compat.py# Flutter-facing routes
+├── test_devices.py      # Device list endpoint
+├── test_ghs.py          # GHS unit tests (pure computation)
+├── test_health.py       # Health score endpoint
+└── test_ws.py           # WebSocket contract
 ```
 
 ---
@@ -72,7 +70,10 @@ async def test_list_devices(client: AsyncClient) -> None:
 **Rules:**
 - Always use `app.dependency_overrides` for FastAPI deps, never `patch()` on the router.
 - Always clear overrides in `finally` block.
-- Use `MagicMock` for sync SQLAlchemy results, `AsyncMock` for async methods.
+- Use `FakeD1` for database queries and `FakeThingsBoard` for TB calls.
+- Override `get_db` and `get_tb_client`; never patch router internals.
+- WebSocket tests monkeypatch `verify_supabase_token`, `_resolve_device_id`
+  and `_make_tb_client` in `app.routers.ws`.
 - Prefix unused variables with `_` (e.g., `_status`).
 
 ---

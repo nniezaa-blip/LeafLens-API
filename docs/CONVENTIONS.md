@@ -1,4 +1,4 @@
-# LeafLens API Coding Conventions
+# Lextari API Coding Conventions
 
 ---
 
@@ -10,15 +10,15 @@ Enforced via ruff (27 rule sets) + mypy strict. Zero warnings, zero errors.
 |------|----------------|-------------|
 | ruff | pyproject.toml `[tool.ruff]` | `ruff check .` |
 | ruff format | pyproject.toml `[tool.ruff.format]` | `ruff format .` |
-| mypy | pyproject.toml `[tool.mypy]` | `mypy app/` |
-| pre-commit | .pre-commit-config.yaml | `pre-commit run --all-files` |
+| mypy | pyproject.toml `[tool.mypy]` | `mypy src/app` |
+| pre-commit | .pre-commit-config.yaml | `uv run pre-commit run --all-files` |
 
 **Rule sets enabled:** E, W, F, I, N, UP, B, A, C4, SIM, TCH, RUF, S, PTH, ERA, PGH, FBT, ICN, PIE, PT, RSE, RET, SLF, T20, PL, PERF, FURB
 
 **Rules ignored (with reason):**
 - B008 — FastAPI `Depends()` in function signatures (standard pattern)
 - PLW0603 — `global` for singletons (standard pattern)
-- PLC0415 — conditional imports (lifespan, sentry)
+- PLC0415 — conditional imports (httpx fallback, pyodide)
 - PLR2004 — magic values in tests and thresholds
 - E501 — line length (formatter handles this)
 
@@ -108,7 +108,7 @@ except:
 ## Router Rules
 
 1. **Handlers are thin.** Validate request -> call service -> return response.
-2. **No business logic in routers.** Business logic lives in `app/services/`.
+2. **No business logic in routers.** Business logic lives in `src/app/services/`.
 3. **No direct httpx calls.** Use injected `ThingsBoardClient` via `Depends()`.
 4. **No raw dicts as responses.** Use Pydantic response models.
 5. **Auth via dependency.** `user: dict = Depends(get_current_user)`.

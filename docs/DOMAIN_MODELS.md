@@ -1,10 +1,10 @@
-# LeafLens API Domain Models
+# Lextari API Domain Models
 
 ---
 
 ## Database Models
 
-**File:** `app/db/models.py`
+**File:** `src/app/db/models.py`
 
 ### UserDevice
 
@@ -12,19 +12,19 @@ Maps Supabase users to ThingsBoard devices.
 
 | Column | Type | Constraints |
 |--------|------|------------|
-| id | int | PK |
+| id | int | PK, autoincrement |
 | user_id | str(36) | indexed |
 | tb_device_id | str(36) | unique, indexed |
 | device_name | str(100) | |
-| device_type | str(50) | default="leaflens-env" |
+| device_type | str(50) | default="lextari-env" |
 | mac_address | str(17) | unique, nullable |
-| created_at | datetime(tz) | server_default=now() |
+| created_at | int (unix seconds) | default `unixepoch()` |
 
 ---
 
 ## Request Schemas
 
-**File:** `app/schemas/requests.py`
+**File:** `src/app/schemas/requests.py`
 
 ### DeviceRegisterRequest
 
@@ -47,7 +47,7 @@ Maps Supabase users to ThingsBoard devices.
 
 ## Response Schemas
 
-**File:** `app/schemas/responses.py`
+**File:** `src/app/schemas/responses.py`
 
 ### DeviceResponse
 
@@ -88,7 +88,7 @@ Maps Supabase users to ThingsBoard devices.
 
 ## Enums
 
-**File:** `app/schemas/ws_messages.py`
+**File:** `src/app/schemas/ws_messages.py`
 
 ### WSMessageType
 
@@ -100,7 +100,7 @@ Maps Supabase users to ThingsBoard devices.
 | ping | Keepalive |
 | pong | Keepalive response |
 
-**File:** `app/services/ghs.py`
+**File:** `src/app/services/ghs.py`
 
 ### GHSStatus
 
@@ -115,21 +115,16 @@ Maps Supabase users to ThingsBoard devices.
 
 ## Configuration
 
-**File:** `app/config.py`
+**File:** `src/app/config.py`
 
 ### Settings
 
 | Field | Type | Default | Required |
 |-------|------|---------|----------|
 | supabase_url | str | "" | Yes (prod) |
-| supabase_anon_key | str | "" | No |
 | supabase_jwks_url | str | "" | No (auto-derived) |
 | tb_url | str | http://localhost:8080 | No |
 | tb_api_key | str | "" | Yes |
-| tb_username | str | "" | Yes (for WS) |
-| tb_password | str | "" | Yes (for WS) |
-| database_url | str | postgresql+asyncpg://... | No |
 | debug | bool | False | No |
-| cors_origins | list[str] | ["http://localhost:3000"] | No |
-| ws_keepalive_interval | int | 30 | No |
-| sentry_dsn | str | "" | No |
+| cors_origins | tuple[str, ...] | ("http://localhost:3000",) | No |
+| ws_poll_interval | int | 5 | No |

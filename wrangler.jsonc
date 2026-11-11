@@ -1,0 +1,29 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lextari-api",
+  "main": "src/worker.py",
+  "compatibility_date": "2026-11-03",
+  "compatibility_flags": ["python_workers"],
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "lextari",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "TB_URL": "https://tb.example.com",
+    "SUPABASE_URL": "https://your-project.supabase.co",
+    "SUPABASE_JWKS_URL": "",
+    "DEBUG": "false",
+    "CORS_ORIGINS": "http://localhost:3000",
+    "WS_POLL_INTERVAL": "5"
+  },
+  "secrets": {
+    "required": ["TB_API_KEY"]
+  }
+}
