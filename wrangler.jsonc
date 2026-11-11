@@ -26,8 +26,5 @@
     "DEBUG": "false",
     "CORS_ORIGINS": "http://localhost:3000",
     "WS_POLL_INTERVAL": "5"
-  },
-  "secrets": {
-    "required": ["TB_API_KEY"]
   }
 }

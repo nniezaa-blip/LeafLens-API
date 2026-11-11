@@ -76,5 +76,14 @@ jobs:
 
       - name: Deploy Worker
         run: uv run pywrangler deploy
+
+      - name: Push runtime secret
+        run: |
+          curl -sS -X PUT \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/lextari-api/secrets" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H 'content-type: application/json' \
+            -d "{\"name\":\"TB_API_KEY\",\"text\":\"${TB_API_KEY}\",\"type\":\"secret_text\"}" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('success') else 1)"
         env:
           TB_API_KEY: ${{ secrets.TB_API_KEY }}
