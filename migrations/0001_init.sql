@@ -1,27 +1,9 @@
--- Lextari D1 schema
-
-CREATE TABLE users (
-  id TEXT PRIMARY KEY,
-  email TEXT NOT NULL UNIQUE COLLATE NOCASE,
-  password_hash TEXT,
-  google_sub TEXT UNIQUE,
-  email_verified INTEGER NOT NULL DEFAULT 0,
-  session_version INTEGER NOT NULL DEFAULT 1,
-  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-  updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
-
-  CHECK (password_hash IS NOT NULL OR google_sub IS NOT NULL)
-);
-
-CREATE TABLE refresh_tokens (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  token_hash TEXT NOT NULL UNIQUE,
-  expires_at INTEGER NOT NULL,
-  revoked_at INTEGER,
-  created_at INTEGER NOT NULL DEFAULT (unixepoch())
-);
-CREATE INDEX idx_refresh_user ON refresh_tokens(user_id);
+-- Lextari API schema.
+--
+-- The auth Worker owns `users` and refresh state; this Worker only owns the
+-- device → user mapping. `tb_device_id` is retained as the column name but
+-- now stores the platform's device identifier (FavorIoT
+-- `device_developer_id`, e.g. `deviceDefault@user`).
 
 CREATE TABLE user_devices (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
