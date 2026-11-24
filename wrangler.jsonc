@@ -18,12 +18,6 @@
       "migrations_dir": "migrations"
     }
   ],
-  "secrets": {
-    "required": [
-      "FAVORIOT_READ_ONLY_API_KEY",
-      "FAVORIOT_READ_WRITE_API_KEY"
-    ]
-  },
   "vars": {
     "FAVORIOT_URL": "https://apiv2.favoriot.com/v2",
     "FAVORIOT_GROUP_ID": "Agrilink_group@anwarzain",
