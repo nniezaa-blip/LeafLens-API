@@ -4,10 +4,10 @@ import pytest
 from httpx import AsyncClient
 
 from app.auth.dependencies import get_current_user
-from app.clients.thingsboard import get_tb_client
+from app.clients.favoriot import get_favoriot_client
 from app.db.d1 import get_db
 from app.main import app
-from tests.fakes import FakeD1, FakeThingsBoard
+from tests.fakes import FakeD1, FakeFavorIoT
 
 
 @pytest.mark.asyncio
@@ -18,7 +18,7 @@ async def test_list_devices_empty(client: AsyncClient) -> None:
         "email": "test@test.com",
     }
     app.dependency_overrides[get_db] = lambda: FakeD1([])
-    app.dependency_overrides[get_tb_client] = FakeThingsBoard
+    app.dependency_overrides[get_favoriot_client] = FakeFavorIoT
 
     try:
         resp = await client.get(

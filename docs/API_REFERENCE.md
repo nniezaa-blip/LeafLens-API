@@ -11,7 +11,7 @@ No auth. Rate limiting is handled by Cloudflare edge rules.
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/v1/health` | Liveness probe |
-| GET | `/api/v1/ready` | Readiness probe (DB + TB) |
+| GET | `/api/v1/ready` | Readiness probe (DB + FavorIoT) |
 
 ### GET /api/v1/health
 
@@ -31,7 +31,7 @@ Response: 200 (all healthy)
   "status": "ready",
   "checks": {
     "database": true,
-    "thingsboard": true
+    "favoriot": true
   }
 }
 
@@ -40,7 +40,7 @@ Response: 503 (degraded)
   "status": "degraded",
   "checks": {
     "database": true,
-    "thingsboard": false
+    "favoriot": false
   }
 }
 ```
@@ -57,7 +57,8 @@ Response: 503 (degraded)
 
 ### POST /api/v1/devices/register
 
-Called by ESP32 after BLE onboarding. Creates TB device, saves mapping.
+Called after BLE onboarding. Creates a FavorIoT device, saves the mapping,
+and returns its device access token.
 
 ```
 Request:
@@ -69,8 +70,8 @@ Request:
 
 Response: 200
 {
-  "thingsboard_token": "auto-generated-mqtt-token",
-  "device_id": "tb-uuid-device-id"
+  "device_access_token": "favoriot-device-access-token",
+  "device_id": "Agrilink_1_device@anwarzain"
 }
 ```
 
@@ -81,7 +82,7 @@ Response: 200
 [
   {
     "id": 1,
-    "tb_device_id": "abc-123",
+    "favoriot_device_id": "Agrilink_1_device@anwarzain",
     "device_name": "Living Room Plant",
     "device_type": "lextari-env",
     "latest_readings": {
@@ -100,7 +101,7 @@ Response: 200
 Response: 200
 {
   "id": 1,
-  "tb_device_id": "abc-123",
+  "favoriot_device_id": "Agrilink_1_device@anwarzain",
   "device_name": "Living Room Plant",
   "device_type": "lextari-env",
   "latest_readings": {
@@ -261,11 +262,12 @@ Close codes: `4001` (missing token), `4003` (invalid token)
 
 ### Messages
 
-The server polls ThingsBoard every `WS_POLL_INTERVAL` seconds and pushes changes.
+The server polls FavorIoT streams every `WS_POLL_INTERVAL` seconds and pushes
+changes.
 
 ```
 Client -> Server:
-  {"type": "auth", "token": "<supabase_jwt>"}
+  {"type": "auth", "token": "<lextari_access_token>"}
   {"type": "subscribe", "device_id": "abc-123"}
   {"type": "ping"}
 
@@ -300,7 +302,7 @@ All errors follow the same shape:
 | 401 | AuthError | Invalid or expired JWT |
 | 404 | DeviceNotFoundError | Device not found |
 | 500 | LextariError | Auth not configured |
-| 502 | ThingsBoardError | TB unavailable |
+| 502 | FavorIoError | FavorIoT unavailable |
 | 503 | ReadyResponse | Health check failed |
 
 ---
@@ -314,5 +316,5 @@ All errors follow the same shape:
 | 404 | Not found |
 | 429 | Rate limited |
 | 500 | Internal server error |
-| 502 | Upstream (ThingsBoard) error |
+| 502 | Upstream (FavorIoT) error |
 | 503 | Service degraded |

@@ -1,6 +1,7 @@
 """HTTP helper built on the Workers fetch API with a local httpx fallback."""
 
 import json
+from importlib import import_module
 from typing import Any
 
 
@@ -29,6 +30,16 @@ async def _fetch_with_httpx(
         return response.json()
 
 
+def _worker_pyfetch() -> Any | None:
+    """Return pyfetch only inside a Workers runtime with the JS bridge."""
+    try:
+        import_module("workers")
+        from pyodide.http import pyfetch
+    except ImportError:
+        return None
+    return pyfetch
+
+
 async def fetch_json(
     url: str,
     *,
@@ -38,9 +49,8 @@ async def fetch_json(
 ) -> Any:
     """Fetch JSON from an upstream service."""
     request_headers = headers or {}
-    try:
-        from pyodide.http import pyfetch
-    except ImportError:
+    pyfetch = _worker_pyfetch()
+    if pyfetch is None:
         return await _fetch_with_httpx(url, method=method, headers=request_headers, body=body)
 
     payload = json.dumps(body) if body is not None else None

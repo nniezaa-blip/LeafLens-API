@@ -16,11 +16,11 @@ lextari-api/
 │       ├── logging_config.py     # JSON structured logging
 │       ├── middleware.py         # Request ID + access logging
 │       ├── auth/
-│       │   ├── jwks.py           # Supabase JWT verify (cached JWKS)
+│       │   ├── jwks.py           # Lextari JWT verify (cached JWKS)
 │       │   └── dependencies.py   # get_current_user FastAPI dep
 │       ├── clients/
 │       │   ├── http.py           # pyfetch + httpx fallback
-│       │   └── thingsboard.py    # TB REST client
+│       │   └── favoriot.py       # FavorIoT REST v2 client
 │       ├── db/
 │       │   ├── d1.py             # D1 query helpers + binding deps
 │       │   └── models.py         # UserDevice row model
@@ -41,10 +41,11 @@ lextari-api/
 │           └── errors.py         # LextariError hierarchy + handler
 ├── tests/
 │   ├── conftest.py               # Shared fixtures (client)
-│   ├── fakes.py                  # FakeD1 + FakeThingsBoard
+│   ├── fakes.py                  # FakeD1 + FakeFavorIoT
 │   ├── test_auth.py              # Health probe
 │   ├── test_client_compat.py     # Flutter-facing routes
 │   ├── test_devices.py           # Device list
+│   ├── test_favoriot_client.py   # Agrilink stream mapping
 │   ├── test_ghs.py               # GHS unit tests
 │   ├── test_health.py            # Health endpoint
 │   └── test_ws.py                # WebSocket contract
@@ -56,7 +57,6 @@ lextari-api/
 ├── uv.lock                       # Locked local dependencies
 ├── pylock.toml                   # Locked Worker/Pyodide dependencies
 ├── wrangler.jsonc                # Worker + D1 config
-├── docker-compose.yml            # Local ThingsBoard stack
 ├── .gitignore
 ├── .gitattributes
 ├── .dev.vars.example             # Workers local template

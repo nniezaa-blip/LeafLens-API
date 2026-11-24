@@ -6,11 +6,11 @@ from typing import Any
 
 @dataclass(frozen=True, slots=True)
 class UserDevice:
-    """Maps a Supabase user to a ThingsBoard device."""
+    """Maps an authenticated user to a FavorIoT device."""
 
     id: int
     user_id: str
-    tb_device_id: str
+    favoriot_device_id: str
     device_name: str
     device_type: str
     mac_address: str | None
@@ -22,7 +22,7 @@ class UserDevice:
         return cls(
             id=int(row["id"]),
             user_id=str(row["user_id"]),
-            tb_device_id=str(row["tb_device_id"]),
+            favoriot_device_id=str(row["favoriot_device_id"]),
             device_name=str(row["device_name"]),
             device_type=str(row.get("device_type") or "lextari-env"),
             mac_address=row.get("mac_address"),

@@ -17,7 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DEBUG: "true"
-      TB_API_KEY: test-key
+      FAVORIOT_READ_ONLY_API_KEY: test-read-key
+      FAVORIOT_READ_WRITE_API_KEY: test-write-key
       AUTH_JWKS_URL: http://localhost:8788/.well-known/jwks.json
 
     steps:

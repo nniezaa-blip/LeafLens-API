@@ -8,13 +8,14 @@
 
 ### UserDevice
 
-Maps Supabase users to ThingsBoard devices.
+Maps authenticated users to FavorIoT devices. The `favoriot_device_id` column
+stores the FavorIoT `device_developer_id`.
 
 | Column | Type | Constraints |
 |--------|------|------------|
 | id | int | PK, autoincrement |
 | user_id | str(36) | indexed |
-| tb_device_id | str(36) | unique, indexed |
+| favoriot_device_id | str | unique, indexed |
 | device_name | str(100) | |
 | device_type | str(50) | default="lextari-env" |
 | mac_address | str(17) | unique, nullable |
@@ -31,7 +32,7 @@ Maps Supabase users to ThingsBoard devices.
 | Field | Type | Description |
 |-------|------|-------------|
 | mac_address | str | ESP32 MAC address |
-| user_id | str | Supabase user UUID |
+| user_id | str | Authenticated user ID |
 | device_name | str | Human-readable name |
 
 ### RPCRequest
@@ -54,7 +55,7 @@ Maps Supabase users to ThingsBoard devices.
 | Field | Type | Description |
 |-------|------|-------------|
 | id | int | DB primary key |
-| tb_device_id | str | ThingsBoard device UUID |
+| favoriot_device_id | str | FavorIoT device developer ID |
 | device_name | str | Human-readable name |
 | device_type | str | Device type |
 | latest_readings | dict | {key: value} or null |
@@ -63,7 +64,7 @@ Maps Supabase users to ThingsBoard devices.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| device_id | str | ThingsBoard device UUID |
+| device_id | str | FavorIoT device developer ID |
 | score | float | 0-100 GHS score |
 | status | str | Optimal/Warning/Danger/Critical |
 | components | dict | Per-metric scores |
@@ -72,7 +73,7 @@ Maps Supabase users to ThingsBoard devices.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| device_id | str | ThingsBoard device UUID |
+| device_id | str | FavorIoT device developer ID |
 | mean | float | Average GHS over period |
 | std | float | Standard deviation |
 | min | float | Lowest score |
@@ -121,10 +122,13 @@ Maps Supabase users to ThingsBoard devices.
 
 | Field | Type | Default | Required |
 |-------|------|---------|----------|
-| supabase_url | str | "" | Yes (prod) |
-| supabase_jwks_url | str | "" | No (auto-derived) |
-| tb_url | str | http://localhost:8080 | No |
-| tb_api_key | str | "" | Yes |
+| favoriot_url | str | https://apiv2.favoriot.com/v2 | No |
+| favoriot_read_only_api_key | str | "" | Yes |
+| favoriot_read_write_api_key | str | "" | Yes |
+| favoriot_group_id | str | "" | No |
+| auth_jwks_url | str | "" | Yes |
+| auth_issuer | str | lextari-auth | No |
+| auth_audience | str | lextari-app | No |
 | debug | bool | False | No |
 | cors_origins | tuple[str, ...] | ("http://localhost:3000",) | No |
 | ws_poll_interval | int | 5 | No |

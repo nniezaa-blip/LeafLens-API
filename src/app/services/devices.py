@@ -14,7 +14,7 @@ async def resolve_user_device(user_id: str, db: Any) -> UserDevice:
     """
     row = await query_first(
         db,
-        "SELECT id, user_id, tb_device_id, device_name, device_type, mac_address, created_at "
+        "SELECT id, user_id, favoriot_device_id, device_name, device_type, mac_address, created_at "
         "FROM user_devices WHERE user_id = ? ORDER BY id LIMIT 1",
         [user_id],
     )

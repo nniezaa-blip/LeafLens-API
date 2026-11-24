@@ -1,6 +1,7 @@
 # Local Cloudflare Workers variables. Copy to .dev.vars (gitignored).
-TB_URL=http://localhost:8080
-TB_API_KEY=your_thingsboard_api_key_here
+# FavorIoT keys are secrets. Paste them into .dev.vars, never into wrangler.jsonc.
+FAVORIOT_READ_ONLY_API_KEY=your_favoriot_read_only_api_key_here
+FAVORIOT_READ_WRITE_API_KEY=your_favoriot_read_write_api_key_here
 AUTH_JWKS_URL=http://localhost:8788/.well-known/jwks.json
 AUTH_ISSUER=lextari-auth
 AUTH_AUDIENCE=lextari-app

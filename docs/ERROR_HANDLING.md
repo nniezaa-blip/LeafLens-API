@@ -28,7 +28,7 @@
 |-------|--------|--------|
 | `LextariError` | 500 | "Internal server error" |
 | `DeviceNotFoundError` | 404 | "Device not found" |
-| `ThingsBoardError` | 502 | "ThingsBoard service unavailable" |
+| `FavorIoError` | 502 | "FavorIoT service unavailable" |
 | `AuthError` | 401 | "Authentication failed" |
 
 **Rules:**
@@ -68,5 +68,5 @@ memory. Use Cloudflare rate limiting rules at the edge instead.
 
 `src/app/clients/http.py` raises `FetchError(status_code, detail)` for any non-2xx
 upstream response. Routers translate specific statuses where needed (for
-example, ThingsBoard `504` becomes `{"queued": true}` for RPC). Observability
+example, FavorIoT `504` becomes `{"queued": true}` for RPC). Observability
 comes from Workers Logs / the `observability` setting in `wrangler.jsonc`.

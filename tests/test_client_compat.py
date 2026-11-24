@@ -4,15 +4,15 @@ import pytest
 from httpx import AsyncClient
 
 from app.auth.dependencies import get_current_user
-from app.clients.thingsboard import get_tb_client
+from app.clients.favoriot import get_favoriot_client
 from app.db.d1 import get_db
 from app.main import app
-from tests.fakes import FakeD1, FakeThingsBoard
+from tests.fakes import FakeD1, FakeFavorIoT
 
 DEVICE_ROW = {
     "id": 1,
     "user_id": "test-user-id",
-    "tb_device_id": "tb-device-1",
+    "favoriot_device_id": "Agrilink_1_device@anwarzain",
     "device_name": "Living Room",
     "device_type": "lextari-env",
     "mac_address": None,
@@ -20,17 +20,17 @@ DEVICE_ROW = {
 }
 
 
-def _override(db: FakeD1, tb: FakeThingsBoard) -> None:
+def _override(db: FakeD1, favoriot: FakeFavorIoT) -> None:
     app.dependency_overrides[get_current_user] = lambda: {"sub": "test-user-id"}
     app.dependency_overrides[get_db] = lambda: db
-    app.dependency_overrides[get_tb_client] = lambda: tb
+    app.dependency_overrides[get_favoriot_client] = lambda: favoriot
 
 
 @pytest.mark.asyncio
 async def test_rpc_resolves_first_device(client: AsyncClient) -> None:
     """POST /api/rpc forwards to the user's first linked device."""
-    tb = FakeThingsBoard()
-    _override(FakeD1([DEVICE_ROW]), tb)
+    favoriot = FakeFavorIoT()
+    _override(FakeD1([DEVICE_ROW]), favoriot)
 
     try:
         resp = await client.post(
@@ -40,7 +40,7 @@ async def test_rpc_resolves_first_device(client: AsyncClient) -> None:
         )
         assert resp.status_code == 200
         assert resp.json()["sent"] is True
-        assert tb.oneway_calls == [("tb-device-1", "triggerWatering", None)]
+        assert favoriot.command_calls == [("Agrilink_1_device@anwarzain", "triggerWatering", None)]
     finally:
         app.dependency_overrides.clear()
 
@@ -48,9 +48,9 @@ async def test_rpc_resolves_first_device(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_telemetry_key_history(client: AsyncClient) -> None:
     """GET /api/telemetry/{key} returns chart points for a sensor key."""
-    tb = FakeThingsBoard()
-    tb.history = {"temperature": [{"ts": 1735689600000, "value": "22.5"}]}
-    _override(FakeD1([DEVICE_ROW]), tb)
+    favoriot = FakeFavorIoT()
+    favoriot.history = {"temperature": [{"ts": 1735689600000, "value": "22.5"}]}
+    _override(FakeD1([DEVICE_ROW]), favoriot)
 
     try:
         resp = await client.get(
@@ -69,9 +69,9 @@ async def test_telemetry_key_history(client: AsyncClient) -> None:
 
 @pytest.mark.asyncio
 async def test_telemetry_rejects_unknown_key(client: AsyncClient) -> None:
-    """Unknown sensor keys return 404 without touching ThingsBoard."""
-    tb = FakeThingsBoard()
-    _override(FakeD1([DEVICE_ROW]), tb)
+    """Unknown sensor keys return 404 without touching FavorIoT."""
+    favoriot = FakeFavorIoT()
+    _override(FakeD1([DEVICE_ROW]), favoriot)
 
     try:
         resp = await client.get(
@@ -79,7 +79,7 @@ async def test_telemetry_rejects_unknown_key(client: AsyncClient) -> None:
             headers={"Authorization": "Bearer fake-token"},
         )
         assert resp.status_code == 404
-        assert tb.history_calls == 0
+        assert favoriot.history_calls == 0
     finally:
         app.dependency_overrides.clear()
 
@@ -87,7 +87,7 @@ async def test_telemetry_rejects_unknown_key(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_device_list_shape(client: AsyncClient) -> None:
     """GET /api/devices uses the Flutter-facing payload shape."""
-    _override(FakeD1([DEVICE_ROW]), FakeThingsBoard())
+    _override(FakeD1([DEVICE_ROW]), FakeFavorIoT())
 
     try:
         resp = await client.get(
@@ -98,7 +98,7 @@ async def test_device_list_shape(client: AsyncClient) -> None:
         assert resp.json() == {
             "devices": [
                 {
-                    "platform_device_id": "tb-device-1",
+                    "platform_device_id": "Agrilink_1_device@anwarzain",
                     "device_name": "Living Room",
                     "device_type": "lextari-env",
                 }
@@ -111,13 +111,13 @@ async def test_device_list_shape(client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_health_score_for_user(client: AsyncClient) -> None:
     """GET /api/health-score resolves the user's device and returns GHS."""
-    tb = FakeThingsBoard()
-    tb.latest = {
+    favoriot = FakeFavorIoT()
+    favoriot.latest = {
         "soil_moisture": 55.0,
         "temperature": 23.0,
         "humidity": 65.0,
     }
-    _override(FakeD1([DEVICE_ROW]), tb)
+    _override(FakeD1([DEVICE_ROW]), favoriot)
 
     try:
         resp = await client.get(

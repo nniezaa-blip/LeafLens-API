@@ -18,8 +18,15 @@
       "migrations_dir": "migrations"
     }
   ],
+  "secrets": {
+    "required": [
+      "FAVORIOT_READ_ONLY_API_KEY",
+      "FAVORIOT_READ_WRITE_API_KEY"
+    ]
+  },
   "vars": {
-    "TB_URL": "https://tb.example.com",
+    "FAVORIOT_URL": "https://apiv2.favoriot.com/v2",
+    "FAVORIOT_GROUP_ID": "Agrilink_group@anwarzain",
     "AUTH_JWKS_URL": "https://lextari-auth.danialsanusi.com/.well-known/jwks.json",
     "AUTH_ISSUER": "lextari-auth",
     "AUTH_AUDIENCE": "lextari-app",

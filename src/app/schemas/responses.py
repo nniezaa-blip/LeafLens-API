@@ -7,7 +7,7 @@ class DeviceResponse(BaseModel):
     """Device listing with latest readings."""
 
     id: int
-    tb_device_id: str
+    favoriot_device_id: str
     device_name: str
     device_type: str
     latest_readings: dict[str, float] | None = None

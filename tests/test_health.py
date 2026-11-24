@@ -4,16 +4,16 @@ import pytest
 from httpx import AsyncClient
 
 from app.auth.dependencies import get_current_user
-from app.clients.thingsboard import get_tb_client
+from app.clients.favoriot import get_favoriot_client
 from app.main import app
-from tests.fakes import FakeThingsBoard
+from tests.fakes import FakeFavorIoT
 
 
 @pytest.mark.asyncio
 async def test_health_score(client: AsyncClient) -> None:
     """Health score endpoint returns GHS."""
-    tb = FakeThingsBoard()
-    tb.latest = {
+    favoriot = FakeFavorIoT()
+    favoriot.latest = {
         "soil_moisture": 55.0,
         "temperature": 23.0,
         "humidity": 65.0,
@@ -23,7 +23,7 @@ async def test_health_score(client: AsyncClient) -> None:
         "sub": "test-user-id",
         "email": "test@test.com",
     }
-    app.dependency_overrides[get_tb_client] = lambda: tb
+    app.dependency_overrides[get_favoriot_client] = lambda: favoriot
 
     try:
         resp = await client.get(

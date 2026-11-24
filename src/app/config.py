@@ -20,8 +20,10 @@ def _as_tuple(value: str) -> tuple[str, ...]:
 class Settings:
     """Runtime configuration sourced from Workers bindings or the environment."""
 
-    tb_url: str = "http://localhost:8080"
-    tb_api_key: str = ""
+    favoriot_url: str = "https://apiv2.favoriot.com/v2"
+    favoriot_read_only_api_key: str = ""
+    favoriot_read_write_api_key: str = ""
+    favoriot_group_id: str = ""
     auth_jwks_url: str = ""
     auth_issuer: str = "lextari-auth"
     auth_audience: str = "lextari-app"
@@ -51,8 +53,10 @@ class Settings:
             poll_interval = 5
 
         return cls(
-            tb_url=read("TB_URL", "http://localhost:8080"),
-            tb_api_key=read("TB_API_KEY"),
+            favoriot_url=read("FAVORIOT_URL", "https://apiv2.favoriot.com/v2"),
+            favoriot_read_only_api_key=read("FAVORIOT_READ_ONLY_API_KEY"),
+            favoriot_read_write_api_key=read("FAVORIOT_READ_WRITE_API_KEY"),
+            favoriot_group_id=read("FAVORIOT_GROUP_ID"),
             auth_jwks_url=read("AUTH_JWKS_URL"),
             auth_issuer=read("AUTH_ISSUER", "lextari-auth"),
             auth_audience=read("AUTH_AUDIENCE", "lextari-app"),

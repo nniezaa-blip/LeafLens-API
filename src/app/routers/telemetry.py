@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth.dependencies import get_current_user
-from app.clients.thingsboard import ThingsBoardClient, get_tb_client
+from app.clients.favoriot import FavorIoTClient, get_favoriot_client
 from app.db.d1 import get_db
 from app.services.devices import resolve_user_device
 
@@ -24,10 +24,10 @@ _SENSOR_UNITS: dict[str, str] = {
 async def get_latest_telemetry(
     device_id: str,
     user: dict[str, Any] = Depends(get_current_user),
-    tb: ThingsBoardClient = Depends(get_tb_client),
+    favoriot: FavorIoTClient = Depends(get_favoriot_client),
 ) -> dict[str, object]:
     """Latest sensor readings for dashboard tiles."""
-    data = await tb.get_latest_telemetry(
+    data = await favoriot.get_latest_telemetry(
         device_id,
         keys=["soil_moisture", "temperature", "humidity", "water_level"],
     )
@@ -39,15 +39,16 @@ async def get_telemetry_history(
     device_id: str,
     days: int = Query(default=30, ge=1, le=90),
     user: dict[str, Any] = Depends(get_current_user),
-    tb: ThingsBoardClient = Depends(get_tb_client),
+    favoriot: FavorIoTClient = Depends(get_favoriot_client),
 ) -> dict[str, object]:
     """30-day historical telemetry for trend charts.
 
-    Uses 1-hour AVG aggregation - 720 points per key, well within limits.
+    Uses 1-hour AVG buckets. FavorIoT returns raw stream rows, so the client
+    performs the aggregation after fetching the requested time range.
     """
     end = datetime.now(UTC)
     start = end - timedelta(days=days)
-    data = await tb.get_telemetry_history(
+    data = await favoriot.get_telemetry_history(
         device_id,
         keys=["soil_moisture", "temperature", "humidity"],
         start_ts_ms=int(start.timestamp() * 1000),
@@ -64,12 +65,12 @@ async def get_telemetry_for_key(
     days: int = Query(default=30, ge=1, le=90),
     user: dict[str, Any] = Depends(get_current_user),
     db: Any = Depends(get_db),
-    tb: ThingsBoardClient = Depends(get_tb_client),
+    favoriot: FavorIoTClient = Depends(get_favoriot_client),
 ) -> dict[str, object]:
     """Per-key telemetry history for the Flutter trend charts.
 
     Resolves the authenticated user's first linked device so the client does
-    not need to know ThingsBoard device IDs.
+    not need to know FavorIoT device developer IDs.
     """
     if key not in _SENSOR_UNITS:
         raise HTTPException(status_code=404, detail=f"Unknown sensor key: {key}")
@@ -77,8 +78,8 @@ async def get_telemetry_for_key(
     device = await resolve_user_device(user["sub"], db)
     end = datetime.now(UTC)
     start = end - timedelta(days=days)
-    data = await tb.get_telemetry_history(
-        device.tb_device_id,
+    data = await favoriot.get_telemetry_history(
+        device.favoriot_device_id,
         keys=[key],
         start_ts_ms=int(start.timestamp() * 1000),
         end_ts_ms=int(end.timestamp() * 1000),

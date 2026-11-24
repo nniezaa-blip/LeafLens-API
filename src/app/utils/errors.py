@@ -20,9 +20,9 @@ class DeviceNotFoundError(LextariError):
     detail = "Device not found"
 
 
-class ThingsBoardError(LextariError):
+class FavorIoError(LextariError):
     status_code = 502
-    detail = "ThingsBoard service unavailable"
+    detail = "FavorIoT service unavailable"
 
 
 class AuthError(LextariError):

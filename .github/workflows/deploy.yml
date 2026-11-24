@@ -77,13 +77,17 @@ jobs:
       - name: Deploy Worker
         run: uv run pywrangler deploy
 
-      - name: Push runtime secret
+      - name: Push runtime secrets
         run: |
-          curl -sS -X PUT \
-            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/lextari-api/secrets" \
-            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-            -H 'content-type: application/json' \
-            -d "{\"name\":\"TB_API_KEY\",\"text\":\"${TB_API_KEY}\",\"type\":\"secret_text\"}" \
-            | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('success') else 1)"
+          for SECRET_NAME in FAVORIOT_READ_ONLY_API_KEY FAVORIOT_READ_WRITE_API_KEY; do
+            python3 -c 'import json,os,sys; print(json.dumps({"name":sys.argv[1],"text":os.environ[sys.argv[1]],"type":"secret_text"}))' "$SECRET_NAME" \
+              | curl -sS -X PUT \
+                  "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/lextari-api/secrets" \
+                  -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+                  -H 'content-type: application/json' \
+                  --data-binary @- \
+              | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('success') else 1)"
+          done
         env:
-          TB_API_KEY: ${{ secrets.TB_API_KEY }}
+          FAVORIOT_READ_ONLY_API_KEY: ${{ secrets.FAVORIOT_READ_ONLY_API_KEY }}
+          FAVORIOT_READ_WRITE_API_KEY: ${{ secrets.FAVORIOT_READ_WRITE_API_KEY }}

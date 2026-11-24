@@ -1,155 +1,112 @@
 # Lextari API Deployment
 
----
+## Local development
 
-## Local Development
-
-Prerequisites: Python 3.13, uv 0.13.4+, and Node.js 22+ (required by
-`pywrangler`). If `pywrangler` reports that uv is too old, run `uv self update`.
+Prerequisites: Python 3.13, uv 0.13.4 or newer, and Node.js 22 or newer.
 
 ```bash
-# 1. Clone and setup
 cd ~/Personal/Dev/lextari-api
 mise install
 uv sync
 
-# 2. Configure
 cp .dev.vars.example .dev.vars
-# Edit .dev.vars with your TB_API_KEY, SUPABASE_URL, etc.
+# Add both FavorIoT keys to .dev.vars. It is gitignored.
 
-# 3. Run
 uv run pywrangler dev
-
-# 4. Test
-open http://localhost:8787/docs   # Swagger UI (debug mode only)
-DEBUG=true TB_API_KEY=test SUPABASE_URL=https://test.supabase.co uv run pytest
 ```
 
-For a plain FastAPI process (local fallback without the Workers runtime):
+The local Worker listens on `http://localhost:8787`. Swagger UI is available at
+`http://localhost:8787/docs` when `DEBUG=true`.
+
+For a plain FastAPI process without the Workers runtime:
 
 ```bash
 cp .env.example .env
 uv run uvicorn app.main:app --app-dir src --reload --port 8000
 ```
 
----
-
-## Pre-commit Hooks
+## Test and quality gates
 
 ```bash
-# Install (one-time)
-pre-commit install --hook-type pre-commit --hook-type commit-msg
-
-# Run manually on all files
-pre-commit run --all-files
-
-# Run on staged files only
-git add .
-git commit -m "feat: your message"
-# Hooks run automatically
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy src/app
+uv run pytest
+uv run pywrangler deploy --dry-run
 ```
 
-**Hooks:**
-1. ruff — lint + auto-fix staged .py files
-2. ruff-format — format staged .py files
-3. conventional-pre-commit — enforce feat/fix/chore format
-4. trailing-whitespace, end-of-file-fixer, check-yaml, etc.
+## Cloudflare Workers setup
 
----
+The Worker is named `lextari-api`. It uses the D1 database `lextari` and the
+custom domain `lextari-api.danialsanusi.com`. The route and D1 binding are in
+`wrangler.jsonc`.
 
-## Docker
-
-Docker is only used to run ThingsBoard locally. The API itself runs on the
-Workers runtime (or `uvicorn` for a plain local fallback).
+One-time setup:
 
 ```bash
-# Run ThingsBoard + PostgreSQL
-docker compose up -d
-
-# Check logs
-docker compose logs -f thingsboard
-
-# Stop
-docker compose down
-```
-
----
-
-## Mise (Tool Versions)
-
-```bash
-# Check current
-mise current
-
-# Install Python 3.13 + Node 22 from mise.toml
-mise install
-
-# Activate in shell (add to ~/.zshrc)
-eval "$(mise activate zsh)"
-```
-
----
-
-## Cloudflare Workers (CI/CD)
-
-The Worker is named **`lextari-api`** and uses the D1 database **`lextari`**.
-
-| Workflow | Trigger | What it does |
-|----------|---------|--------------|
-| `.github/workflows/ci.yml` | Push to `main`, pull requests | `ruff check`, `ruff format --check`, `mypy src/app`, `pytest`, Worker dry-run build |
-| `.github/workflows/deploy.yml` | After CI succeeds on `main`, or manual dispatch | Applies D1 migrations, then `pywrangler deploy` |
-
-### Required GitHub secrets
-
-| Secret | Purpose |
-|--------|---------|
-| `CLOUDFLARE_API_TOKEN` | Cloudflare API token with Workers Scripts:Edit and D1:Edit |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account ID |
-
-### One-time setup
-
-```bash
-# 1. Create the D1 database
 npx wrangler d1 create lextari
+# Copy the returned database_id into wrangler.jsonc.
 
-# 2. Copy the returned database_id into wrangler.jsonc
-
-# 3. Generate the Worker dependency lock and set runtime secrets
 uv sync
-uv run pywrangler sync          # writes pylock.toml; commit it
-uv run pywrangler secret put TB_API_KEY
-
-# 4. Add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID as GitHub repository secrets
+uv run pywrangler sync
+uv run pywrangler secret put FAVORIOT_READ_ONLY_API_KEY
+uv run pywrangler secret put FAVORIOT_READ_WRITE_API_KEY
 ```
 
-Update `TB_URL` in `wrangler.jsonc` to the deployed ThingsBoard URL. Use a
-least-privilege API token scoped to Workers Scripts and D1.
-
-### Local Workers development
+The `user_devices` schema changed with the FavorIoT migration. Recreate the
+existing dev database so it matches `migrations/0001_init.sql`:
 
 ```bash
-uv sync
-cp .dev.vars.example .dev.vars
-uv run pywrangler dev
+npx wrangler d1 execute lextari --remote --command "DROP TABLE IF EXISTS user_devices"
+uv run pywrangler d1 migrations apply lextari --remote
 ```
 
-The Worker entrypoint is `src/worker.py`. Python Workers upload every `.py`
-file under the entrypoint's directory, so `src/app/` is bundled automatically
-while the repository-root virtualenvs and tests stay out of the upload.
-`python_modules/` is added separately by `pywrangler sync`.
+Device mappings are rebuilt when devices are registered again.
 
----
+`FAVORIOT_READ_ONLY_API_KEY` is used for `GET /streams` and `GET /devices`.
+`FAVORIOT_READ_WRITE_API_KEY` is used for device creation and command streams.
+Both keys are required secrets. They are declared in `wrangler.jsonc` under
+`secrets.required`, so deployment fails when either is missing. Do not put
+either key in `vars`, `.env.example`, or source code.
 
-## Environment Variables
+Local development uses `.dev.vars` instead of remote secrets. Remote secrets are
+encrypted bindings and cannot be read back from Wrangler or the dashboard.
 
-See `docs/ENVIRONMENT.md` for full reference. Key vars:
+## Deploy
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| TB_API_KEY | Yes | ThingsBoard API key (Worker secret) |
-| TB_URL | Yes | ThingsBoard base URL |
-| SUPABASE_URL | Yes (prod) | Supabase project URL |
-| SUPABASE_JWKS_URL | No | Override JWKS endpoint |
-| DEBUG | No | Enables Swagger UI |
-| CORS_ORIGINS | No | Comma-separated allowed origins |
-| WS_POLL_INTERVAL | No | Seconds between TB polls (default 5) |
+```bash
+uv run pywrangler d1 migrations apply lextari --remote
+uv run pywrangler deploy
+```
+
+Pushes to `main` run CI and then the deploy workflow. The workflow applies D1
+migrations from the auth Worker, deploys both Workers, and updates the two
+FavorIoT secrets from GitHub repository secrets named
+`FAVORIOT_READ_ONLY_API_KEY` and `FAVORIOT_READ_WRITE_API_KEY`.
+
+## Required configuration
+
+| Name | Location | Purpose |
+|------|----------|---------|
+| `FAVORIOT_URL` | `wrangler.jsonc` vars | FavorIoT v2 base URL |
+| `FAVORIOT_GROUP_ID` | `wrangler.jsonc` vars | Group used when creating devices |
+| `FAVORIOT_READ_ONLY_API_KEY` | Worker secret | Stream and device reads |
+| `FAVORIOT_READ_WRITE_API_KEY` | Worker secret | Device creation and command streams |
+| `AUTH_JWKS_URL` | `wrangler.jsonc` vars | JWKS endpoint of the auth Worker |
+| `AUTH_ISSUER` | `wrangler.jsonc` vars | Expected JWT issuer |
+| `AUTH_AUDIENCE` | `wrangler.jsonc` vars | Expected JWT audience |
+| `DEBUG` | `wrangler.jsonc` vars | Enables Swagger UI |
+| `CORS_ORIGINS` | `wrangler.jsonc` vars | Comma-separated browser origins |
+| `WS_POLL_INTERVAL` | `wrangler.jsonc` vars | Seconds between FavorIoT polls |
+| `DB` | D1 binding | `user_devices` table |
+
+## Verify the deployed Worker
+
+```bash
+curl https://lextari-api.danialsanusi.com/api/v1/health
+curl https://lextari-api.danialsanusi.com/api/v1/ready
+```
+
+`/api/v1/ready` reports `{"favoriot": true}` when the read-only key is valid.
+A valid JWT from the auth Worker is required for device, telemetry, health,
+command, and WebSocket routes.

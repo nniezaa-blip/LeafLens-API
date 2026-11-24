@@ -1,128 +1,130 @@
 # Lextari API Architecture
 
-> FastAPI backend for Lextari. Proxies ThingsBoard, verifies Supabase JWT, computes Growth Health Score.
+> FastAPI backend for Lextari. Reads FavorIoT streams, verifies Lextari auth
+> JWTs, and computes Growth Health Score.
 > Part of Bachelor of Computer Science FYP at IIUM.
 
----
-
-## System Position
+## System position
 
 ```
-                    ┌─────────────────────────────────────────────┐
-                    │                 Cloud / VPS                 │
-                    │                                             │
+                     ┌─────────────────────────────────────────────┐
+                     │            Cloudflare Workers              │
+                     │                                             │
   ┌──────────┐     │  ┌───────────┐     ┌──────────────────┐     │     ┌──────────┐
-  │  ESP32   │─────┼─>│ ThingsBoard│<────│  lextari-api    │<────┼─────│  Flutter  │
-  │ (MQTT)   │     │  │  :8080    │     │ (Workers)        │     │     │   App    │
+  │  ESP32   │─────┼─>│ FavorIoT  │<────│  lextari-api    │<────┼─────│  Flutter  │
+  │ (streams)│     │  │  REST v2  │     │  (FastAPI)       │     │     │   App    │
   └──────────┘     │  └───────────┘     └──────────────────┘     │     └──────────┘
        │           │         ▲                    │               │          │
        │           │         │                    │               │          │
-  Sensors +        │    TB REST API          DB + Auth            │     REST + WS
-  Actuators        │    TB REST poll         GHS Compute          │     JWT
-                    │                                             │
-                    │  ┌───────────┐     ┌──────────────────┐     │
-                    │  │    D1     │     │    Supabase      │     │
-                    │  │ (SQLite)  │     │  (Auth only)     │     │
-                    │  └───────────┘     └──────────────────┘     │
-                    └─────────────────────────────────────────────┘
+  Sensors +        │  FavorIoT streams       D1 + Auth            │     REST + WS
+  Actuators        │                         GHS Compute          │     JWT
+                     │                                             │
+                     │  ┌───────────┐     ┌──────────────────┐     │
+                     │  │    D1     │     │ Auth Worker JWKS │     │
+                     │  │ (SQLite)  │     │                  │     │
+                     │  └───────────┘     └──────────────────┘     │
+                     └─────────────────────────────────────────────┘
 ```
 
-**Rules:**
-- Flutter NEVER talks to ThingsBoard directly. Always through lextari-api.
-- lextari-api is the ONLY service that holds TB_API_KEY.
-- Flutter holds Supabase JWT (via SDK). lextari-api verifies it.
+Rules:
 
----
+- Flutter never talks to FavorIoT directly. It always goes through lextari-api.
+- lextari-api is the only service that holds the FavorIoT API keys.
+- The read-only key is used for GET requests. The read-write key is used for
+  POST requests.
+- Flutter holds the Lextari access token. lextari-api verifies it against the
+  auth Worker JWKS.
 
-## Request Flow
+## Request flow
 
-### 1. Authenticated Request (Flutter -> API)
+### Authenticated request
 
-```
-Flutter                    lextari-api                 ThingsBoard
+```text
+Flutter                    lextari-api                 FavorIoT
   │                            │                            │
-  │  GET /api/v1/devices       │                            │
+  │  GET /api/devices          │                            │
   │  Authorization: Bearer jwt │                            │
   │ ──────────────────────────>│                            │
-  │                            │  verify JWT (cached JWKS)  │
-  │                            │  ── extract user_id ──     │
+  │                            │  verify JWT against JWKS   │
+  │                            │  read user_devices from D1 │
   │                            │                            │
-  │                            │  GET /api/device           │
-  │                            │  X-Authorization: ApiKey   │
+  │                            │  GET /v2/streams?device_   │
+  │                            │    developer_id=...        │
+  │                            │  apikey: read-only key     │
   │                            │ ──────────────────────────>│
   │                            │ <──────────────────────────│
-  │                            │                            │
+  │                            │  normalise data object     │
   │  200 {devices: [...]}      │                            │
   │ <──────────────────────────│                            │
 ```
 
-### 2. Device Provisioning (ESP32 -> API)
+### Device provisioning
 
-```
-ESP32                       lextari-api                 ThingsBoard
+```text
+Caller                      lextari-api                 FavorIoT
   │                            │                            │
   │  POST /api/v1/devices/     │                            │
   │       register             │                            │
   │  {mac_address, user_id,    │                            │
   │   device_name}             │                            │
   │ ──────────────────────────>│                            │
-  │                            │  POST /api/device          │
-  │                            │ ──────────────────────────>│
-  │                            │ <──────────────────────────│
-  │                            │  GET /credentials          │
+  │                            │  POST /v2/devices          │
+  │                            │  apikey: read-write key    │
   │                            │ ──────────────────────────>│
   │                            │ <──────────────────────────│
   │                            │  INSERT user_devices       │
   │                            │                            │
-  │  {thingsboard_token,       │                            │
+  │  {device_access_token,     │                            │
   │   device_id}               │                            │
   │ <──────────────────────────│                            │
-  │                            │                            │
-  │  ─── ESP32 stores token, connects via MQTT ───          │
 ```
 
-### 3. RPC Command (Flutter -> ESP32)
+### Command flow
 
+```text
+Flutter                    lextari-api                 FavorIoT          ESP32
+  │                            │                            │              │
+  │  POST /api/rpc             │                            │              │
+  │  {method: "refill_on"}     │                            │              │
+  │ ──────────────────────────>│                            │              │
+  │                            │  POST /v2/streams          │              │
+  │                            │  {command, params}         │              │
+  │                            │  apikey: read-write key    │              │
+  │                            │ ──────────────────────────>│              │
+  │                            │                            │  firmware    │
+  │                            │                            │  reads       │
+  │                            │                            │  stream      │
+  │                            │                            │ ────────────>│
+  │  200 {sent: true}          │                            │              │
+  │ <──────────────────────────│                            │              │
 ```
-Flutter                    lextari-api             ThingsBoard          ESP32
-  │                            │                        │                  │
-  │  POST /api/v1/rpc/{id}     │                        │                  │
-  │  {method: "water"}         │                        │                  │
-  │ ──────────────────────────>│                        │                  │
-  │                            │  POST /api/rpc/oneway  │                  │
-  │                            │ ──────────────────────>│                  │
-  │                            │                        │  MQTT publish    │
-  │                            │                        │ ────────────────>│
-  │                            │                        │                  │
-  │  200 {sent: true}          │                        │                  │
-  │ <──────────────────────────│                        │                  │
-```
 
----
+FavorIoT REST does not provide a two-way RPC channel. Two-way calls return
+`501`. The one-way path writes a `command` stream, so the ESP32 firmware must
+read that stream or subscribe to an equivalent FavorIoT channel for commands to
+take effect.
 
-## Data Split
+## Data split
 
-| Data | Stored Where | Why |
-|------|-------------|-----|
-| Sensor telemetry | ThingsBoard | Time-series optimized, MQTT ingestion |
-| Device-to-user mapping | D1 (`user_devices`) | Relational, queried by user_id |
-| User accounts | Supabase | Auth provider, JWT issuance |
-| GHS score | Computed on-demand | No storage needed, derived from telemetry |
-| Actuator state | ThingsBoard shared attributes | Real-time, synced to ESP32 |
+| Data | Stored where | Why |
+|------|--------------|-----|
+| Sensor telemetry | FavorIoT streams | Existing device ingestion path |
+| Device-to-user mapping | D1 (`user_devices`) | Relational, queried by user ID |
+| User accounts | Auth Worker D1 | Identity provider |
+| GHS score | Computed on demand | Derived from telemetry |
+| Command records | FavorIoT streams | Device-visible command delivery |
 
----
-
-## Technology Stack
+## Technology stack
 
 | Layer | Technology | Role |
 |-------|-----------|------|
-| API Framework | FastAPI 0.115+ | Async HTTP/WebSocket server |
-| Auth | Supabase JWT + JWKS | Token verification (not issuance) |
+| API framework | FastAPI | Async HTTP and WebSocket routes |
+| Auth | Lextari JWT and JWKS | Token verification, not issuance |
 | Database | Cloudflare D1 | Device-user mapping |
 | Migrations | `wrangler d1 migrations` | Schema versioning |
-| HTTP Client | `pyodide.http.pyfetch` | ThingsBoard REST proxy |
-| WebSocket | FastAPI + TB REST polling | Telemetry relay to Flutter |
-| Config | Request-scoped dataclass | Workers bindings + env fallback |
-| Runtime | Cloudflare Workers (Python) | Production deployment |
-| Linting | ruff (27 rules) + mypy strict | Code quality |
-| Testing | pytest + pytest-asyncio | Async test support |
+| HTTP client | `pyodide.http.pyfetch` | FavorIoT REST calls |
+| WebSocket | FastAPI plus FavorIoT REST polling | Telemetry relay to Flutter |
+| Config | Request-scoped dataclass | Workers bindings and env fallback |
+| Runtime | Cloudflare Workers with Python | Production deployment |
+| Linting | ruff and mypy | Code quality |
+| Testing | pytest and pytest-asyncio | Async test support |

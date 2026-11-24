@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.clients.http import FetchError, fetch_json
+from app.clients.http import fetch_json
 from app.config import Settings, get_settings, worker_env
 from app.logging_config import setup_logging
 
@@ -61,7 +61,7 @@ def create_app() -> FastAPI:
         request: Request,
         settings: Settings = Depends(get_settings),
     ) -> JSONResponse:
-        checks: dict[str, bool] = {"database": False, "thingsboard": False}
+        checks: dict[str, bool] = {"database": False, "favoriot": False}
 
         env = request.scope.get("env")
         db = getattr(env, "DB", None) if env is not None else None
@@ -74,14 +74,12 @@ def create_app() -> FastAPI:
 
         try:
             await fetch_json(
-                f"{settings.tb_url}/api/auth/user",
-                headers={"X-Authorization": f"ApiKey {settings.tb_api_key}"},
+                f"{settings.favoriot_url}/devices?max=1",
+                headers={"apikey": settings.favoriot_read_only_api_key},
             )
-            checks["thingsboard"] = True
-        except FetchError as exc:
-            checks["thingsboard"] = exc.status_code == 401
+            checks["favoriot"] = True
         except Exception:
-            logger.warning("ThingsBoard health check failed")
+            logger.warning("FavorIoT health check failed", exc_info=True)
 
         all_ok = all(checks.values())
         return JSONResponse(

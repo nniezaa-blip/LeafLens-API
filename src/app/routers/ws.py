@@ -1,4 +1,4 @@
-"""WebSocket relay that polls ThingsBoard for the user's device."""
+"""WebSocket relay that polls FavorIoT for the user's device."""
 
 import asyncio
 import logging
@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.auth.jwks import verify_access_token
-from app.clients.thingsboard import ThingsBoardClient
+from app.clients.favoriot import FavorIoTClient
 from app.config import Settings, get_settings_from_scope
 from app.db.d1 import get_db_from_scope, query_first
 from app.services.ghs import compute_health_score
@@ -33,8 +33,8 @@ def _as_float(value: object) -> float | None:
     return None
 
 
-def _make_tb_client(settings: Settings) -> ThingsBoardClient:
-    return ThingsBoardClient(settings)
+def _make_favoriot_client(settings: Settings) -> FavorIoTClient:
+    return FavorIoTClient(settings)
 
 
 async def _resolve_device_id(user_id: str, db: Any) -> str | None:
@@ -42,10 +42,10 @@ async def _resolve_device_id(user_id: str, db: Any) -> str | None:
         return None
     row = await query_first(
         db,
-        "SELECT tb_device_id FROM user_devices WHERE user_id = ? ORDER BY id LIMIT 1",
+        "SELECT favoriot_device_id FROM user_devices WHERE user_id = ? ORDER BY id LIMIT 1",
         [user_id],
     )
-    return str(row["tb_device_id"]) if row is not None else None
+    return str(row["favoriot_device_id"]) if row is not None else None
 
 
 async def _read_token(websocket: WebSocket) -> tuple[str, bool] | None:
@@ -72,11 +72,11 @@ class _RelayConnection:
     def __init__(
         self,
         websocket: WebSocket,
-        tb: ThingsBoardClient,
+        favoriot: FavorIoTClient,
         poll_interval: int,
     ) -> None:
         self._websocket = websocket
-        self._tb = tb
+        self._favoriot = favoriot
         self._poll_interval = poll_interval
         self._send_lock = asyncio.Lock()
         self._latest: dict[str, object] = {}
@@ -96,7 +96,7 @@ class _RelayConnection:
         if device_id is None:
             return
         try:
-            snapshot = await self._tb.get_latest_telemetry(
+            snapshot = await self._favoriot.get_latest_telemetry(
                 device_id,
                 keys=list(_TELEMETRY_FIELDS),
             )
@@ -136,7 +136,7 @@ class _RelayConnection:
             if device_id is None:
                 continue
             try:
-                snapshot = await self._tb.get_latest_telemetry(
+                snapshot = await self._favoriot.get_latest_telemetry(
                     device_id,
                     keys=list(_TELEMETRY_FIELDS),
                 )
@@ -175,7 +175,7 @@ class _RelayConnection:
 @router.websocket("/ws")
 @router.websocket("/api/v1/ws")
 async def ws_relay(websocket: WebSocket) -> None:
-    """WebSocket relay: ThingsBoard -> Lextari API -> Flutter.
+    """WebSocket relay: FavorIoT -> Lextari API -> Flutter.
 
     The Flutter client authenticates with a first message::
 
@@ -210,7 +210,11 @@ async def ws_relay(websocket: WebSocket) -> None:
     if token_from_message:
         await websocket.send_json({"type": "auth_ok"})
 
-    relay = _RelayConnection(websocket, _make_tb_client(settings), settings.ws_poll_interval)
+    relay = _RelayConnection(
+        websocket,
+        _make_favoriot_client(settings),
+        settings.ws_poll_interval,
+    )
     await relay.attach(await _resolve_device_id(user["sub"], db))
     relay.start()
 

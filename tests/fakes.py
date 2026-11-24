@@ -1,4 +1,4 @@
-"""Shared test doubles for D1 and ThingsBoard."""
+"""Shared test doubles for D1 and FavorIoT."""
 
 from typing import Any
 
@@ -39,14 +39,13 @@ class FakeD1:
         return _FakeStatement(self, sql)
 
 
-class FakeThingsBoard:
-    """In-memory ThingsBoard client used by endpoint tests."""
+class FakeFavorIoT:
+    """In-memory FavorIoT client used by endpoint tests."""
 
     def __init__(self) -> None:
         self.latest: dict[str, Any] = {}
         self.history: dict[str, list[dict[str, Any]]] = {}
-        self.oneway_calls: list[tuple[str, str, dict[str, object] | None]] = []
-        self.twoway_calls: list[tuple[str, str, dict[str, object] | None, int]] = []
+        self.command_calls: list[tuple[str, str, dict[str, object] | None]] = []
         self.history_calls = 0
 
     async def get_latest_telemetry(self, device_id: str, keys: list[str]) -> dict[str, Any]:
@@ -60,7 +59,7 @@ class FakeThingsBoard:
         end_ts_ms: int,
         agg: str = "AVG",
         interval_ms: int = 3_600_000,
-        limit: int = 2000,
+        limit: int = 10_000,
     ) -> dict[str, list[dict[str, Any]]]:
         self.history_calls += 1
         return self.history
@@ -68,20 +67,11 @@ class FakeThingsBoard:
     async def send_rpc_oneway(
         self, device_id: str, method: str, params: dict[str, object] | None = None
     ) -> None:
-        self.oneway_calls.append((device_id, method, params))
-
-    async def send_rpc_twoway(
-        self,
-        device_id: str,
-        method: str,
-        params: dict[str, object] | None = None,
-        timeout: int = 5000,
-    ) -> dict[str, Any]:
-        self.twoway_calls.append((device_id, method, params, timeout))
-        return {"ok": True}
+        self.command_calls.append((device_id, method, params))
 
     async def create_device(self, name: str, device_type: str = "sensor") -> dict[str, Any]:
-        return {"id": {"id": "tb-new-device"}}
-
-    async def get_device_credentials(self, device_id: str) -> dict[str, Any]:
-        return {"credentialsId": "tb-access-token"}
+        return {
+            "device_developer_id": f"{name}@anwarzain",
+            "accesstoken": "favoriot-device-token",
+            "device_name": name,
+        }

@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 
 from app.auth.dependencies import get_current_user
-from app.clients.thingsboard import ThingsBoardClient, get_tb_client
+from app.clients.favoriot import FavorIoTClient, get_favoriot_client
 from app.db.d1 import get_db
 from app.schemas.responses import GHSSummaryResponse, HealthScoreResponse
 from app.services.devices import resolve_user_device
@@ -19,10 +19,10 @@ router = APIRouter()
 async def get_health_score(
     device_id: str,
     user: dict[str, Any] = Depends(get_current_user),
-    tb: ThingsBoardClient = Depends(get_tb_client),
+    favoriot: FavorIoTClient = Depends(get_favoriot_client),
 ) -> HealthScoreResponse:
     """Current Growth Health Score - computed from latest telemetry."""
-    readings = await tb.get_latest_telemetry(
+    readings = await favoriot.get_latest_telemetry(
         device_id,
         keys=["soil_moisture", "temperature", "humidity"],
     )
@@ -43,12 +43,12 @@ async def get_health_score(
 async def get_health_score_for_user(
     user: dict[str, Any] = Depends(get_current_user),
     db: Any = Depends(get_db),
-    tb: ThingsBoardClient = Depends(get_tb_client),
+    favoriot: FavorIoTClient = Depends(get_favoriot_client),
 ) -> dict[str, object]:
     """Current GHS for the authenticated user's linked device."""
     device = await resolve_user_device(user["sub"], db)
-    readings = await tb.get_latest_telemetry(
-        device.tb_device_id,
+    readings = await favoriot.get_latest_telemetry(
+        device.favoriot_device_id,
         keys=["soil_moisture", "temperature", "humidity"],
     )
     score, status, components = compute_health_score(
@@ -69,12 +69,12 @@ async def get_health_summary(
     device_id: str,
     days: int = Query(default=30, ge=7, le=90),
     user: dict[str, Any] = Depends(get_current_user),
-    tb: ThingsBoardClient = Depends(get_tb_client),
+    favoriot: FavorIoTClient = Depends(get_favoriot_client),
 ) -> GHSSummaryResponse:
     """30-day health summary for thesis methodology."""
     end = datetime.now(UTC)
     start = end - timedelta(days=days)
-    telemetry = await tb.get_telemetry_history(
+    telemetry = await favoriot.get_telemetry_history(
         device_id,
         keys=["soil_moisture", "temperature", "humidity"],
         start_ts_ms=int(start.timestamp() * 1000),

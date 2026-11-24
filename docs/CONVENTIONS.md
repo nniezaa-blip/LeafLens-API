@@ -28,8 +28,8 @@ Enforced via ruff (27 rule sets) + mypy strict. Zero warnings, zero errors.
 
 | Element | Convention | Example |
 |---------|-----------|---------|
-| File | snake_case | `thingsboard.py` |
-| Class | PascalCase | `ThingsBoardClient` |
+| File | snake_case | `favoriot.py` |
+| Class | PascalCase | `FavorIoTClient` |
 | Function | snake_case | `get_health_score()` |
 | Constant | UPPER_SNAKE | `_TELEMETRY_KEYS` |
 | Private | Leading underscore | `_jwt_token` |
@@ -52,7 +52,7 @@ import httpx
 from fastapi import APIRouter, Depends
 
 from app.auth.dependencies import get_current_user
-from app.clients.thingsboard import get_tb_client
+from app.clients.favoriot import get_favoriot_client
 ```
 
 **Type annotations:** Required on all functions. Use modern syntax.
@@ -91,14 +91,14 @@ class DeviceResponse(BaseModel):
 ```python
 # GOOD
 try:
-    result = await tb.get_device(device_id)
+    result = await favoriot.get_latest_telemetry(device_id, keys)
 except httpx.HTTPStatusError as exc:
     if exc.response.status_code == 404:
         raise DeviceNotFoundError()
 
 # BAD
 try:
-    result = await tb.get_device(device_id)
+    result = await favoriot.get_latest_telemetry(device_id, keys)
 except:
     pass
 ```
@@ -109,7 +109,7 @@ except:
 
 1. **Handlers are thin.** Validate request -> call service -> return response.
 2. **No business logic in routers.** Business logic lives in `src/app/services/`.
-3. **No direct httpx calls.** Use injected `ThingsBoardClient` via `Depends()`.
+3. **No direct upstream calls.** Use injected `FavorIoTClient` via `Depends()`.
 4. **No raw dicts as responses.** Use Pydantic response models.
 5. **Auth via dependency.** `user: dict = Depends(get_current_user)`.
 
