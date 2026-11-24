@@ -6,6 +6,7 @@ to values. The helpers normalise that shape into the ``{key: value}`` and
 ``{key: [{ts, value}]}`` contracts the API routers already speak.
 """
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote, urlencode
@@ -267,7 +268,7 @@ class FavorIoTClient:
                 "device_developer_id": device_id,
                 "data": {
                     _COMMAND_KEY: method,
-                    _COMMAND_PARAMS_KEY: params or {},
+                    _COMMAND_PARAMS_KEY: json.dumps(params or {}),
                 },
             },
         )

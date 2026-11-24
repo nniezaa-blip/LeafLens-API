@@ -136,5 +136,5 @@ async def test_command_uses_write_key(
     assert captured["headers"]["apikey"] == "write-key"
     assert captured["body"] == {
         "device_developer_id": DEVICE_ID,
-        "data": {"command": "refill_on", "params": {"pump": "tank"}},
+        "data": {"command": "refill_on", "params": '{"pump": "tank"}'},
     }

@@ -355,7 +355,10 @@ def _assert_http_journey(client: TestClient, token: str, favoriot: SimulatedFavo
     )
     assert command.status_code == 200
     assert command.json()["sent"] is True
-    assert favoriot.read_commands() == [{"command": "refill_on", "params": {"liters": 2}}]
+    commands = favoriot.read_commands()
+    assert len(commands) == 1
+    assert commands[0]["command"] == "refill_on"
+    assert json.loads(commands[0]["params"]) == {"liters": 2}
 
 
 def _assert_websocket_journey(client: TestClient, token: str) -> None:
