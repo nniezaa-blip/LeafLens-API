@@ -83,7 +83,7 @@ async def test_link_device_inserts_mapping(client: AsyncClient) -> None:
         assert resp.json() == {
             "platform_device_id": "Agrilink_1_device@anwarzain",
             "device_name": "My Lextari",
-            "device_type": "sensor",
+            "device_type": "lextari-env",
         }
         assert fake_db.executed
     finally:

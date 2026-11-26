@@ -9,7 +9,7 @@ from app.clients.favoriot import FavorIoTClient, FavorIoUnsupportedError, get_fa
 from app.clients.http import FetchError
 from app.db.d1 import get_db
 from app.schemas.requests import RPCRequest
-from app.services.devices import resolve_user_device
+from app.services.devices import resolve_user_devices, select_rpc_device
 
 router = APIRouter()
 
@@ -59,6 +59,9 @@ async def send_rpc_for_user(
     """Device-agnostic command used by the Flutter app.
 
     The device is resolved from the authenticated user's linked devices.
+    Refill commands go to the water device; mist and watering go to the
+    environment device.
     """
-    device = await resolve_user_device(user["sub"], db)
+    devices = await resolve_user_devices(user["sub"], db)
+    device = select_rpc_device(devices, body.method)
     return await _relay_rpc(device.favoriot_device_id, body, favoriot)

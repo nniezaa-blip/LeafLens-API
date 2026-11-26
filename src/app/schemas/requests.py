@@ -16,10 +16,16 @@ class DeviceRegisterRequest(BaseModel):
 
 
 class DeviceLinkRequest(BaseModel):
-    """Payload for linking an existing FavorIoT device to the current user."""
+    """Payload for linking an existing FavorIoT device to the current user.
 
-    device_developer_id: str
+    Both ``platform_device_id`` and ``device_developer_id`` are accepted so the
+    mobile client and the older backend contract keep working.
+    """
+
+    platform_device_id: str | None = None
+    device_developer_id: str | None = None
     device_name: str | None = None
+    device_type: str | None = None
 
 
 class RPCRequest(BaseModel):

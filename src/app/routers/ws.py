@@ -10,8 +10,10 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.auth.jwks import verify_access_token
 from app.clients.favoriot import FavorIoTClient
 from app.config import Settings, get_settings_from_scope
-from app.db.d1 import get_db_from_scope, query_first
+from app.db.d1 import get_db_from_scope, query_all
+from app.db.models import UserDevice
 from app.services.ghs import compute_health_score
+from app.services.telemetry import read_latest_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -37,15 +39,16 @@ def _make_favoriot_client(settings: Settings) -> FavorIoTClient:
     return FavorIoTClient(settings)
 
 
-async def _resolve_device_id(user_id: str, db: Any) -> str | None:
+async def _resolve_devices(user_id: str, db: Any) -> list[UserDevice]:
     if db is None:
-        return None
-    row = await query_first(
+        return []
+    rows = await query_all(
         db,
-        "SELECT favoriot_device_id FROM user_devices WHERE user_id = ? ORDER BY id LIMIT 1",
+        "SELECT id, user_id, favoriot_device_id, device_name, device_type, mac_address, created_at "
+        "FROM user_devices WHERE user_id = ? ORDER BY id",
         [user_id],
     )
-    return str(row["favoriot_device_id"]) if row is not None else None
+    return [UserDevice.from_row(row) for row in rows]
 
 
 async def _read_token(websocket: WebSocket) -> tuple[str, bool] | None:
@@ -81,7 +84,7 @@ class _RelayConnection:
         self._send_lock = asyncio.Lock()
         self._latest: dict[str, object] = {}
         self._poll_task: asyncio.Task[None] | None = None
-        self.device_id: str | None = None
+        self.devices: list[UserDevice] = []
 
     async def send(self, payload: dict[str, object]) -> None:
         try:
@@ -90,15 +93,16 @@ class _RelayConnection:
         except (RuntimeError, WebSocketDisconnect):
             pass
 
-    async def attach(self, device_id: str | None) -> None:
-        self.device_id = device_id
+    async def attach(self, devices: list[UserDevice]) -> None:
+        self.devices = devices
         self._latest.clear()
-        if device_id is None:
+        if not devices:
             return
         try:
-            snapshot = await self._favoriot.get_latest_telemetry(
-                device_id,
-                keys=list(_TELEMETRY_FIELDS),
+            snapshot = await read_latest_snapshot(
+                self._favoriot,
+                devices,
+                keys=tuple(_TELEMETRY_FIELDS),
             )
         except Exception:
             logger.warning("Initial telemetry fetch failed", exc_info=True)
@@ -108,7 +112,7 @@ class _RelayConnection:
         await self.send_health()
 
     def detach(self) -> None:
-        self.device_id = None
+        self.devices = []
 
     def start(self) -> None:
         if self._poll_task is None:
@@ -124,21 +128,22 @@ class _RelayConnection:
                 await task
 
     async def switch(self, device_id: str) -> None:
-        if device_id == self.device_id:
+        selected = [device for device in self.devices if device.favoriot_device_id == device_id]
+        if not selected:
             return
-        await self.attach(device_id)
+        await self.attach(selected)
         await self.send({"type": "subscribed", "device_id": device_id})
 
     async def _poll(self) -> None:
         while True:
             await asyncio.sleep(self._poll_interval)
-            device_id = self.device_id
-            if device_id is None:
+            if not self.devices:
                 continue
             try:
-                snapshot = await self._favoriot.get_latest_telemetry(
-                    device_id,
-                    keys=list(_TELEMETRY_FIELDS),
+                snapshot = await read_latest_snapshot(
+                    self._favoriot,
+                    self.devices,
+                    keys=tuple(_TELEMETRY_FIELDS),
                 )
             except Exception:
                 logger.warning("Telemetry poll failed", exc_info=True)
@@ -215,7 +220,7 @@ async def ws_relay(websocket: WebSocket) -> None:
         _make_favoriot_client(settings),
         settings.ws_poll_interval,
     )
-    await relay.attach(await _resolve_device_id(user["sub"], db))
+    await relay.attach(await _resolve_devices(user["sub"], db))
     relay.start()
 
     try:

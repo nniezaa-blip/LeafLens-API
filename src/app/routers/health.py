@@ -9,8 +9,9 @@ from app.auth.dependencies import get_current_user
 from app.clients.favoriot import FavorIoTClient, get_favoriot_client
 from app.db.d1 import get_db
 from app.schemas.responses import GHSSummaryResponse, HealthScoreResponse
-from app.services.devices import resolve_user_device
+from app.services.devices import resolve_user_devices
 from app.services.ghs import compute_health_score
+from app.services.telemetry import ENVIRONMENT_KEYS, read_latest_snapshot
 
 router = APIRouter()
 
@@ -46,10 +47,11 @@ async def get_health_score_for_user(
     favoriot: FavorIoTClient = Depends(get_favoriot_client),
 ) -> dict[str, object]:
     """Current GHS for the authenticated user's linked device."""
-    device = await resolve_user_device(user["sub"], db)
-    readings = await favoriot.get_latest_telemetry(
-        device.favoriot_device_id,
-        keys=["soil_moisture", "temperature", "humidity"],
+    devices = await resolve_user_devices(user["sub"], db)
+    readings = await read_latest_snapshot(
+        favoriot,
+        devices,
+        keys=tuple(ENVIRONMENT_KEYS),
     )
     score, status, components = compute_health_score(
         soil_moisture=readings.get("soil_moisture"),

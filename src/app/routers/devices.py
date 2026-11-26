@@ -58,6 +58,13 @@ async def register_device(
     }
 
 
+def _infer_device_type(device_id: str, device_name: str) -> str:
+    text = f"{device_id} {device_name}".lower()
+    if any(hint in text for hint in ("water", "refill", "solenoid", "tank")):
+        return "lextari-water"
+    return "lextari-env"
+
+
 @router.post("/api/v1/devices/link", response_model=LinkedDeviceResponse)
 async def link_device(
     body: DeviceLinkRequest,
@@ -67,10 +74,11 @@ async def link_device(
 ) -> LinkedDeviceResponse:
     """Link an existing FavorIoT device to the authenticated user."""
     user_id = str(current_user["sub"])
-    device_id = body.device_developer_id.strip()
+    device_id = (body.platform_device_id or body.device_developer_id or "").strip()
     if not device_id:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="device_developer_id is required"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="platform_device_id is required",
         )
 
     favoriot_devices = await favoriot.list_devices()
@@ -87,7 +95,7 @@ async def link_device(
 
     favoriot_device = matching[0]
     device_name = body.device_name or str(favoriot_device.get("device_name") or device_id)
-    device_type = str(favoriot_device.get("device_type") or "sensor")
+    device_type = body.device_type or _infer_device_type(device_id, device_name)
 
     existing = await query_first(
         db,

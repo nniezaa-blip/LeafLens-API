@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth.dependencies import get_current_user
 from app.clients.favoriot import FavorIoTClient, get_favoriot_client
 from app.db.d1 import get_db
-from app.services.devices import resolve_user_device
+from app.services.devices import resolve_user_devices
+from app.services.telemetry import read_history_for_key
 
 router = APIRouter()
 
@@ -75,19 +76,16 @@ async def get_telemetry_for_key(
     if key not in _SENSOR_UNITS:
         raise HTTPException(status_code=404, detail=f"Unknown sensor key: {key}")
 
-    device = await resolve_user_device(user["sub"], db)
+    devices = await resolve_user_devices(user["sub"], db)
     end = datetime.now(UTC)
     start = end - timedelta(days=days)
-    data = await favoriot.get_telemetry_history(
-        device.favoriot_device_id,
-        keys=[key],
+    raw_points = await read_history_for_key(
+        favoriot,
+        devices,
+        key,
         start_ts_ms=int(start.timestamp() * 1000),
         end_ts_ms=int(end.timestamp() * 1000),
-        agg="AVG",
-        interval_ms=3_600_000,
     )
 
-    points = [
-        {"ts": int(entry["ts"]), "value": float(entry["value"])} for entry in data.get(key, [])
-    ]
+    points = [{"ts": int(entry["ts"]), "value": float(entry["value"])} for entry in raw_points]
     return {"key": key, "unit": _SENSOR_UNITS[key], "points": points}

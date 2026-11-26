@@ -2,6 +2,7 @@
 
 from fastapi.testclient import TestClient
 
+from app.db.models import UserDevice
 from app.main import app
 from app.routers import ws as ws_router
 from tests.fakes import FakeFavorIoT
@@ -19,11 +20,21 @@ def test_ws_first_message_auth_and_initial_snapshot(monkeypatch) -> None:
     async def verify(*args: object, **kwargs: object) -> dict[str, str]:
         return {"sub": "user-1"}
 
-    async def resolve_device(user_id: str, db: object) -> str:
-        return "Agrilink_1_device@anwarzain"
+    async def resolve_devices(user_id: str, db: object) -> list[UserDevice]:
+        return [
+            UserDevice(
+                id=1,
+                user_id=user_id,
+                favoriot_device_id="Agrilink_1_device@anwarzain",
+                device_name="Lextari Environment",
+                device_type="lextari-env",
+                mac_address=None,
+                created_at=0,
+            )
+        ]
 
     monkeypatch.setattr(ws_router, "verify_access_token", verify)
-    monkeypatch.setattr(ws_router, "_resolve_device_id", resolve_device)
+    monkeypatch.setattr(ws_router, "_resolve_devices", resolve_devices)
     monkeypatch.setattr(ws_router, "_make_favoriot_client", lambda settings: favoriot)
 
     client = TestClient(app)
