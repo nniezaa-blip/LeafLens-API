@@ -53,6 +53,11 @@ def test_ws_first_message_auth_and_initial_snapshot(monkeypatch) -> None:
                 "temperature": FakeFavorIoT.default_reading_ts,
                 "humidity": FakeFavorIoT.default_reading_ts,
             },
+            "source": {
+                "soilMoisture": "Lextari Environment",
+                "temperature": "Lextari Environment",
+                "humidity": "Lextari Environment",
+            },
         }
 
         ghs = websocket.receive_json()
@@ -106,6 +111,12 @@ def test_ws_initial_snapshot_falls_back_to_last_known(monkeypatch) -> None:
                 "temperature": 1_792_114_890_241,
                 "humidity": 1_792_114_890_241,
                 "waterLevel": 1_792_114_890_241,
+            },
+            "source": {
+                "soilMoisture": "Lextari Environment",
+                "temperature": "Lextari Environment",
+                "humidity": "Lextari Environment",
+                "waterLevel": "Lextari Environment",
             },
         }
 

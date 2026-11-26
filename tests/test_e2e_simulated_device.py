@@ -380,6 +380,12 @@ def _assert_websocket_journey(client: TestClient, token: str) -> None:
             "waterLevel",
         }
         assert all(isinstance(value, int) and value > 0 for value in recorded_at.values())
+        assert telemetry["source"] == {
+            "soilMoisture": "Agrilink 1",
+            "temperature": "Agrilink 1",
+            "humidity": "Agrilink 1",
+            "waterLevel": "Agrilink 1",
+        }
         assert websocket.receive_json() == {"type": "ghs", "score": 100.0, "status": "Optimal"}
 
 

@@ -6,8 +6,9 @@ import pytest
 
 from app.db.models import UserDevice
 from app.services.telemetry import (
-    fill_snapshot_gaps_from_history,
+    SnapshotReading,
     read_latest_snapshot_with_timestamps,
+    reconcile_snapshot_with_history,
 )
 
 
@@ -74,9 +75,24 @@ async def test_newest_reading_wins_across_devices() -> None:
         keys=("soil_moisture", "temperature", "water_level"),
     )
 
-    assert snapshot["soil_moisture"] == (0.0, 200)
-    assert snapshot["temperature"] == (23.5, 200)
-    assert snapshot["water_level"] == (409.0, 100)
+    assert snapshot["soil_moisture"] == SnapshotReading(
+        value=0.0,
+        recorded_at_ms=200,
+        device_id="env@device",
+        device_name="Lextari Environment",
+    )
+    assert snapshot["temperature"] == SnapshotReading(
+        value=23.5,
+        recorded_at_ms=200,
+        device_id="env@device",
+        device_name="Lextari Environment",
+    )
+    assert snapshot["water_level"] == SnapshotReading(
+        value=409.0,
+        recorded_at_ms=100,
+        device_id="water@device",
+        device_name="Lextari Water",
+    )
 
 
 @pytest.mark.asyncio
@@ -96,15 +112,52 @@ async def test_role_owner_breaks_a_timestamp_tie() -> None:
         keys=("soil_moisture",),
     )
 
-    assert snapshot["soil_moisture"] == (0.0, 200)
+    assert snapshot["soil_moisture"] == SnapshotReading(
+        value=0.0,
+        recorded_at_ms=200,
+        device_id="env@device",
+        device_name="Lextari Environment",
+    )
 
 
 @pytest.mark.asyncio
-async def test_missing_readings_fall_back_to_history() -> None:
+async def test_history_replaces_an_older_stored_reading() -> None:
+    environment = _device("env@device", "Lextari Environment", "lextari-env")
+    water = _device("water@device", "Lextari Water", "lextari-water")
+    favoriot = _FakeFavorIoT(
+        {
+            environment.favoriot_device_id: {},
+            water.favoriot_device_id: {"soil_moisture": (59.0, 100)},
+        },
+        history={"soil_moisture": [{"ts": 200, "value": 0.0}]},
+    )
+
+    snapshot = await read_latest_snapshot_with_timestamps(
+        favoriot,  # type: ignore[arg-type]
+        [environment, water],
+        keys=("soil_moisture",),
+    )
+    await reconcile_snapshot_with_history(
+        favoriot,  # type: ignore[arg-type]
+        [environment, water],
+        snapshot,
+        keys=("soil_moisture",),
+    )
+
+    assert snapshot["soil_moisture"] == SnapshotReading(
+        value=0.0,
+        recorded_at_ms=200,
+        device_id="env@device",
+        device_name="Lextari Environment",
+    )
+
+
+@pytest.mark.asyncio
+async def test_history_does_not_replace_a_newer_reading() -> None:
     environment = _device("env@device", "Lextari Environment", "lextari-env")
     favoriot = _FakeFavorIoT(
-        {},
-        history={"temperature": [{"ts": 100, "value": 22.0}]},
+        {environment.favoriot_device_id: {"temperature": (22.0, 300)}},
+        history={"temperature": [{"ts": 200, "value": 20.0}]},
     )
 
     snapshot = await read_latest_snapshot_with_timestamps(
@@ -112,11 +165,12 @@ async def test_missing_readings_fall_back_to_history() -> None:
         [environment],
         keys=("temperature",),
     )
-    await fill_snapshot_gaps_from_history(
+    await reconcile_snapshot_with_history(
         favoriot,  # type: ignore[arg-type]
         [environment],
         snapshot,
         keys=("temperature",),
     )
 
-    assert snapshot["temperature"] == (22.0, 100)
+    assert snapshot["temperature"].value == 22.0
+    assert snapshot["temperature"].recorded_at_ms == 300

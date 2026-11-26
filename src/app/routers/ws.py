@@ -14,8 +14,9 @@ from app.db.d1 import get_db_from_scope, query_all
 from app.db.models import UserDevice
 from app.services.ghs import compute_health_score
 from app.services.telemetry import (
-    fill_snapshot_gaps_from_history,
+    SnapshotReading,
     read_latest_snapshot_with_timestamps,
+    reconcile_snapshot_with_history,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,7 +78,7 @@ class _RelayConnection:
         self._favoriot = favoriot
         self._poll_interval = poll_interval
         self._send_lock = asyncio.Lock()
-        self._latest: dict[str, tuple[float, int]] = {}
+        self._latest: dict[str, SnapshotReading] = {}
         self._poll_task: asyncio.Task[None] | None = None
         self.devices: list[UserDevice] = []
 
@@ -102,7 +103,7 @@ class _RelayConnection:
         except Exception:
             logger.warning("Initial telemetry fetch failed", exc_info=True)
             return
-        await fill_snapshot_gaps_from_history(
+        await reconcile_snapshot_with_history(
             self._favoriot,
             devices,
             snapshot,
@@ -157,18 +158,30 @@ class _RelayConnection:
 
     async def send_telemetry(self) -> None:
         readings = {
-            camel: self._latest[key][0]
+            camel: self._latest[key].value
             for key, camel in _TELEMETRY_FIELDS.items()
             if key in self._latest
         }
         if not readings:
             return
         recorded_at = {
-            camel: self._latest[key][1]
+            camel: self._latest[key].recorded_at_ms
             for key, camel in _TELEMETRY_FIELDS.items()
             if key in self._latest
         }
-        await self.send({"type": "telemetry", **readings, "recordedAt": recorded_at})
+        sources = {
+            camel: self._latest[key].device_name
+            for key, camel in _TELEMETRY_FIELDS.items()
+            if key in self._latest
+        }
+        await self.send(
+            {
+                "type": "telemetry",
+                **readings,
+                "recordedAt": recorded_at,
+                "source": sources,
+            }
+        )
 
     async def send_health(self) -> None:
         soil = self._latest.get("soil_moisture")
@@ -177,9 +190,9 @@ class _RelayConnection:
         if soil is None or temperature is None or humidity is None:
             return
         score, status, _ = compute_health_score(
-            soil_moisture=soil[0],
-            temperature=temperature[0],
-            humidity=humidity[0],
+            soil_moisture=soil.value,
+            temperature=temperature.value,
+            humidity=humidity.value,
         )
         await self.send({"type": "ghs", "score": score, "status": status.value})
 

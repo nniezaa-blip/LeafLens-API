@@ -1,6 +1,7 @@
 """Telemetry helpers that combine readings from every linked device."""
 
 import asyncio
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -16,6 +17,17 @@ SENSOR_KEYS = ("soil_moisture", "temperature", "humidity", "water_level")
 ENVIRONMENT_KEYS = {"soil_moisture", "temperature", "humidity"}
 WATER_KEYS = {"water_level"}
 HISTORY_LOOKBACK_DAYS = 90
+RECONCILE_STALE_AFTER_MS = 3_600_000
+
+
+@dataclass(frozen=True)
+class SnapshotReading:
+    """Newest reading for one sensor and the device that recorded it."""
+
+    value: float
+    recorded_at_ms: int
+    device_id: str
+    device_name: str
 
 
 def preferred_role_for_key(key: str) -> str:
@@ -23,22 +35,32 @@ def preferred_role_for_key(key: str) -> str:
     return WATER_ROLE if key in WATER_KEYS else ENVIRONMENT_ROLE
 
 
-def _newest_snapshot_for_key(
+def _newest_reading_for_key(
     pairs: list[tuple[UserDevice, dict[str, tuple[float, int]]]],
     key: str,
-) -> dict[str, tuple[float, int]] | None:
-    """Return the snapshot holding the newest reading for ``key``.
+) -> SnapshotReading | None:
+    """Return the newest reading for ``key`` and the device that sent it.
 
     The role owner wins only when timestamps tie, so a device that stopped
     publishing cannot mask a newer reading from another linked device.
     """
     preferred = preferred_role_for_key(key)
-    best: tuple[bool, int, dict[str, tuple[float, int]]] | None = None
+    best: tuple[bool, int, SnapshotReading] | None = None
     for device, snapshot in pairs:
         reading = snapshot.get(key)
         if reading is None:
             continue
-        candidate = (device_role(device) == preferred, reading[1], snapshot)
+        value, recorded_at_ms = reading
+        candidate = (
+            device_role(device) == preferred,
+            recorded_at_ms,
+            SnapshotReading(
+                value=value,
+                recorded_at_ms=recorded_at_ms,
+                device_id=device.favoriot_device_id,
+                device_name=device.device_name,
+            ),
+        )
         if best is None:
             best = candidate
             continue
@@ -55,8 +77,8 @@ async def read_latest_snapshot_with_timestamps(
     favoriot: FavorIoTClient,
     devices: list[UserDevice],
     keys: tuple[str, ...] = SENSOR_KEYS,
-) -> dict[str, tuple[float, int]]:
-    """Read the newest value and timestamp for each key across every device.
+) -> dict[str, SnapshotReading]:
+    """Read the newest value, timestamp and source for every sensor key.
 
     The newest recorded timestamp wins. The environment device owns soil,
     temperature and humidity, and the water device owns water level, so the
@@ -69,11 +91,11 @@ async def read_latest_snapshot_with_timestamps(
         )
     )
     pairs = list(zip(devices, snapshots, strict=True))
-    merged: dict[str, tuple[float, int]] = {}
+    merged: dict[str, SnapshotReading] = {}
     for key in keys:
-        snapshot = _newest_snapshot_for_key(pairs, key)
-        if snapshot is not None and key in snapshot:
-            merged[key] = snapshot[key]
+        reading = _newest_reading_for_key(pairs, key)
+        if reading is not None:
+            merged[key] = reading
     return merged
 
 
@@ -84,50 +106,68 @@ async def read_latest_snapshot(
 ) -> dict[str, float]:
     """Read the newest value for each key across every linked device."""
     snapshot = await read_latest_snapshot_with_timestamps(favoriot, devices, keys)
-    return {key: value for key, (value, _) in snapshot.items()}
+    return {key: reading.value for key, reading in snapshot.items()}
 
 
-async def fill_snapshot_gaps_from_history(
+async def reconcile_snapshot_with_history(
     favoriot: FavorIoTClient,
     devices: list[UserDevice],
-    snapshot: dict[str, tuple[float, int]],
+    snapshot: dict[str, SnapshotReading],
     keys: tuple[str, ...] = SENSOR_KEYS,
     lookback_days: int = HISTORY_LOOKBACK_DAYS,
 ) -> None:
-    """Fill keys missing from the live snapshot with their newest history point.
+    """Keep the newest reading per key across live streams and history.
 
-    The environment device in the field stops publishing while its last
-    readings stay valid reference values, so the initial dashboard snapshot
-    keeps them and marks them last known through their timestamps.
+    A stopped device keeps its last stored values, while another device or an
+    hourly history bucket can hold a newer reading for the same sensor. The
+    newer reading replaces the older one and carries its source device.
     """
-    missing = [key for key in keys if key not in snapshot]
-    if not missing or not devices:
+    if not devices:
         return
-    end = datetime.now(UTC)
+    now = datetime.now(UTC)
+    end = now
     start = end - timedelta(days=max(lookback_days, 1))
-    for key in missing:
-        points = await read_history_for_key(
+    stale_before_ms = int(now.timestamp() * 1000) - RECONCILE_STALE_AFTER_MS
+    stale_keys = [
+        key
+        for key in keys
+        if key not in snapshot or snapshot[key].recorded_at_ms < stale_before_ms
+    ]
+    for key in stale_keys:
+        history = await read_history_for_key_with_device(
             favoriot,
             devices,
             key,
             start_ts_ms=int(start.timestamp() * 1000),
             end_ts_ms=int(end.timestamp() * 1000),
         )
+        if history is None:
+            continue
+        device, points = history
         if not points:
             continue
         newest = points[-1]
-        snapshot[key] = (float(newest["value"]), int(newest["ts"]))
+        recorded_at_ms = int(newest["ts"])
+        current = snapshot.get(key)
+        if current is not None and current.recorded_at_ms >= recorded_at_ms:
+            continue
+        snapshot[key] = SnapshotReading(
+            value=float(newest["value"]),
+            recorded_at_ms=recorded_at_ms,
+            device_id=device.favoriot_device_id,
+            device_name=device.device_name,
+        )
 
 
-async def read_history_for_key(
+async def read_history_for_key_with_device(
     favoriot: FavorIoTClient,
     devices: list[UserDevice],
     key: str,
     start_ts_ms: int,
     end_ts_ms: int,
     interval_ms: int = 3_600_000,
-) -> list[dict[str, float]]:
-    """Return history for a key from the device that owns it."""
+) -> tuple[UserDevice, list[dict[str, float]]] | None:
+    """Return the source device and history points for a key."""
     preferred = preferred_role_for_key(key)
     ordered = sorted(devices, key=lambda device: 0 if device_role(device) == preferred else 1)
     for device in ordered:
@@ -141,5 +181,25 @@ async def read_history_for_key(
         )
         points: list[dict[str, float]] = data.get(key, [])
         if points:
-            return points
-    return []
+            return device, points
+    return None
+
+
+async def read_history_for_key(
+    favoriot: FavorIoTClient,
+    devices: list[UserDevice],
+    key: str,
+    start_ts_ms: int,
+    end_ts_ms: int,
+    interval_ms: int = 3_600_000,
+) -> list[dict[str, float]]:
+    """Return history for a key from the device that owns it."""
+    history = await read_history_for_key_with_device(
+        favoriot,
+        devices,
+        key,
+        start_ts_ms=start_ts_ms,
+        end_ts_ms=end_ts_ms,
+        interval_ms=interval_ms,
+    )
+    return history[1] if history is not None else []
