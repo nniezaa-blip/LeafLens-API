@@ -7,7 +7,7 @@ to values. The helpers normalise that shape into the ``{key: value}`` and
 """
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote, urlencode
 
@@ -192,25 +192,18 @@ class FavorIoTClient:
         self,
         device_id: str,
         keys: list[str],
-        lookback_days: int = _LATEST_LOOKBACK_DAYS,
     ) -> dict[str, tuple[float, int]]:
         """Fetch the newest reading and timestamp per key.
 
-        The stream query carries an explicit lookback range so a device that
-        stopped publishing still reports its last known readings instead of an
-        empty snapshot.
+        FavorIoT's unfiltered stream query is the only form that reliably
+        returns the last rows after a device stops publishing. Keys missing
+        from it are filled from history by the telemetry service.
         """
-        end = datetime.now(UTC)
-        start = end - timedelta(days=max(lookback_days, 1))
         rows = await self._request(
             "GET",
             "/streams",
             {
                 "device_developer_id": device_id,
-                "created_from_to": _format_created_range(
-                    int(start.timestamp() * 1000),
-                    int(end.timestamp() * 1000),
-                ),
                 "max": _LATEST_ROWS,
                 "order": _ORDER_DESC,
             },

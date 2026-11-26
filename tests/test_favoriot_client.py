@@ -81,7 +81,6 @@ async def test_latest_telemetry_reads_agrilink_stream(
 
     assert result == {"soil_moisture": 0.0, "temperature": 22.0, "humidity": 73.0}
     assert "device_developer_id=Agrilink_1_device%40anwarzain" in captured["url"]
-    assert "created_from_to=" in captured["url"]
     assert "order=desc" in captured["url"]
     assert captured["headers"]["apikey"] == "read-key"
 
