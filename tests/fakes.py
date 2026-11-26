@@ -42,8 +42,11 @@ class FakeD1:
 class FakeFavorIoT:
     """In-memory FavorIoT client used by endpoint tests."""
 
+    default_reading_ts = 1_792_114_890_241
+
     def __init__(self) -> None:
         self.latest: dict[str, Any] = {}
+        self.latest_ts: dict[str, int] = {}
         self.history: dict[str, list[dict[str, Any]]] = {}
         self.command_calls: list[tuple[str, str, dict[str, object] | None]] = []
         self.history_calls = 0
@@ -62,6 +65,17 @@ class FakeFavorIoT:
 
     async def get_latest_telemetry(self, device_id: str, keys: list[str]) -> dict[str, Any]:
         return dict(self.latest)
+
+    async def get_latest_readings(
+        self, device_id: str, keys: list[str]
+    ) -> dict[str, tuple[float, int]]:
+        return {
+            key: (
+                float(value),
+                self.latest_ts.get(key, self.default_reading_ts),
+            )
+            for key, value in self.latest.items()
+        }
 
     async def get_telemetry_history(
         self,

@@ -366,13 +366,20 @@ def _assert_websocket_journey(client: TestClient, token: str) -> None:
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json({"type": "auth", "token": token})
         assert websocket.receive_json() == {"type": "auth_ok"}
-        assert websocket.receive_json() == {
-            "type": "telemetry",
-            "soilMoisture": 55.0,
-            "temperature": 24.0,
-            "humidity": 65.0,
-            "waterLevel": 80.0,
+        telemetry = websocket.receive_json()
+        assert telemetry["type"] == "telemetry"
+        assert telemetry["soilMoisture"] == 55.0
+        assert telemetry["temperature"] == 24.0
+        assert telemetry["humidity"] == 65.0
+        assert telemetry["waterLevel"] == 80.0
+        recorded_at = telemetry["recordedAt"]
+        assert set(recorded_at) == {
+            "soilMoisture",
+            "temperature",
+            "humidity",
+            "waterLevel",
         }
+        assert all(isinstance(value, int) and value > 0 for value in recorded_at.values())
         assert websocket.receive_json() == {"type": "ghs", "score": 100.0, "status": "Optimal"}
 
 

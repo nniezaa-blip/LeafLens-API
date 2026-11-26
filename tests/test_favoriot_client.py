@@ -81,8 +81,31 @@ async def test_latest_telemetry_reads_agrilink_stream(
 
     assert result == {"soil_moisture": 0.0, "temperature": 22.0, "humidity": 73.0}
     assert "device_developer_id=Agrilink_1_device%40anwarzain" in captured["url"]
+    assert "created_from_to=" in captured["url"]
     assert "order=desc" in captured["url"]
     assert captured["headers"]["apikey"] == "read-key"
+
+
+@pytest.mark.asyncio
+async def test_latest_readings_keep_the_recording_timestamp(
+    monkeypatch: pytest.MonkeyPatch,
+    settings: Settings,
+) -> None:
+    async def fake_fetch_json(url: str, **kwargs: Any) -> Any:
+        return {"statusCode": 200, "numFound": 2, "results": AGRI_LINK_ROWS}
+
+    monkeypatch.setattr(favoriot_client, "fetch_json", fake_fetch_json)
+
+    result = await FavorIoTClient(settings).get_latest_readings(
+        DEVICE_ID,
+        keys=["soil_moisture", "temperature", "humidity", "water_level"],
+    )
+
+    assert result == {
+        "soil_moisture": (0.0, 1_792_114_890_241),
+        "temperature": (22.0, 1_792_114_890_241),
+        "humidity": (73.0, 1_792_114_890_241),
+    }
 
 
 @pytest.mark.asyncio

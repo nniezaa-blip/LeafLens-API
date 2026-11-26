@@ -13,7 +13,10 @@ from app.config import Settings, get_settings_from_scope
 from app.db.d1 import get_db_from_scope, query_all
 from app.db.models import UserDevice
 from app.services.ghs import compute_health_score
-from app.services.telemetry import read_latest_snapshot
+from app.services.telemetry import (
+    fill_snapshot_gaps_from_history,
+    read_latest_snapshot_with_timestamps,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,14 +28,6 @@ _TELEMETRY_FIELDS = {
     "humidity": "humidity",
     "water_level": "waterLevel",
 }
-
-
-def _as_float(value: object) -> float | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int | float):
-        return float(value)
-    return None
 
 
 def _make_favoriot_client(settings: Settings) -> FavorIoTClient:
@@ -82,7 +77,7 @@ class _RelayConnection:
         self._favoriot = favoriot
         self._poll_interval = poll_interval
         self._send_lock = asyncio.Lock()
-        self._latest: dict[str, object] = {}
+        self._latest: dict[str, tuple[float, int]] = {}
         self._poll_task: asyncio.Task[None] | None = None
         self.devices: list[UserDevice] = []
 
@@ -99,7 +94,7 @@ class _RelayConnection:
         if not devices:
             return
         try:
-            snapshot = await read_latest_snapshot(
+            snapshot = await read_latest_snapshot_with_timestamps(
                 self._favoriot,
                 devices,
                 keys=tuple(_TELEMETRY_FIELDS),
@@ -107,6 +102,12 @@ class _RelayConnection:
         except Exception:
             logger.warning("Initial telemetry fetch failed", exc_info=True)
             return
+        await fill_snapshot_gaps_from_history(
+            self._favoriot,
+            devices,
+            snapshot,
+            keys=tuple(_TELEMETRY_FIELDS),
+        )
         self._latest.update(snapshot)
         await self.send_telemetry()
         await self.send_health()
@@ -140,7 +141,7 @@ class _RelayConnection:
             if not self.devices:
                 continue
             try:
-                snapshot = await read_latest_snapshot(
+                snapshot = await read_latest_snapshot_with_timestamps(
                     self._favoriot,
                     self.devices,
                     keys=tuple(_TELEMETRY_FIELDS),
@@ -156,23 +157,29 @@ class _RelayConnection:
 
     async def send_telemetry(self) -> None:
         readings = {
-            camel: self._latest[key]
+            camel: self._latest[key][0]
             for key, camel in _TELEMETRY_FIELDS.items()
             if key in self._latest
         }
-        if readings:
-            await self.send({"type": "telemetry", **readings})
+        if not readings:
+            return
+        recorded_at = {
+            camel: self._latest[key][1]
+            for key, camel in _TELEMETRY_FIELDS.items()
+            if key in self._latest
+        }
+        await self.send({"type": "telemetry", **readings, "recordedAt": recorded_at})
 
     async def send_health(self) -> None:
-        soil = _as_float(self._latest.get("soil_moisture"))
-        temperature = _as_float(self._latest.get("temperature"))
-        humidity = _as_float(self._latest.get("humidity"))
+        soil = self._latest.get("soil_moisture")
+        temperature = self._latest.get("temperature")
+        humidity = self._latest.get("humidity")
         if soil is None or temperature is None or humidity is None:
             return
         score, status, _ = compute_health_score(
-            soil_moisture=soil,
-            temperature=temperature,
-            humidity=humidity,
+            soil_moisture=soil[0],
+            temperature=temperature[0],
+            humidity=humidity[0],
         )
         await self.send({"type": "ghs", "score": score, "status": status.value})
 

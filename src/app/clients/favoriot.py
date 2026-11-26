@@ -7,7 +7,7 @@ to values. The helpers normalise that shape into the ``{key: value}`` and
 """
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote, urlencode
 
@@ -19,6 +19,7 @@ from app.config import Settings, get_settings
 _DEFAULT_BASE_URL = "https://apiv2.favoriot.com/v2"
 _LATEST_ROWS = 50
 _HISTORY_ROWS = 10_000
+_LATEST_LOOKBACK_DAYS = 90
 _ORDER_DESC = "desc"
 _ORDER_ASC = "asc"
 _COMMAND_KEY = "command"
@@ -83,8 +84,8 @@ def _as_float(value: Any) -> float | None:
         return None
 
 
-def latest_values(rows: Any, keys: list[str]) -> dict[str, float]:
-    """Newest numeric value per requested key."""
+def latest_readings(rows: Any, keys: list[str]) -> dict[str, tuple[float, int]]:
+    """Newest numeric reading and its timestamp per requested key."""
     wanted = set(keys)
     latest: dict[str, tuple[int, float]] = {}
     for timestamp, key, raw in _iter_readings(rows):
@@ -96,7 +97,12 @@ def latest_values(rows: Any, keys: list[str]) -> dict[str, float]:
         current = latest.get(key)
         if current is None or timestamp >= current[0]:
             latest[key] = (timestamp, number)
-    return {key: value for key, (_, value) in latest.items()}
+    return {key: (value, timestamp) for key, (timestamp, value) in latest.items()}
+
+
+def latest_values(rows: Any, keys: list[str]) -> dict[str, float]:
+    """Newest numeric value per requested key."""
+    return {key: value for key, (value, _) in latest_readings(rows, keys).items()}
 
 
 def bucket_history(
@@ -182,18 +188,39 @@ class FavorIoTClient:
 
     # ── Telemetry ───────────────────────────────────────────────────────
 
-    async def get_latest_telemetry(self, device_id: str, keys: list[str]) -> dict[str, float]:
-        """Fetch the newest value per key. Returns ``{key: value}``."""
+    async def get_latest_readings(
+        self,
+        device_id: str,
+        keys: list[str],
+        lookback_days: int = _LATEST_LOOKBACK_DAYS,
+    ) -> dict[str, tuple[float, int]]:
+        """Fetch the newest reading and timestamp per key.
+
+        The stream query carries an explicit lookback range so a device that
+        stopped publishing still reports its last known readings instead of an
+        empty snapshot.
+        """
+        end = datetime.now(UTC)
+        start = end - timedelta(days=max(lookback_days, 1))
         rows = await self._request(
             "GET",
             "/streams",
             {
                 "device_developer_id": device_id,
+                "created_from_to": _format_created_range(
+                    int(start.timestamp() * 1000),
+                    int(end.timestamp() * 1000),
+                ),
                 "max": _LATEST_ROWS,
                 "order": _ORDER_DESC,
             },
         )
-        return latest_values(rows, keys)
+        return latest_readings(rows, keys)
+
+    async def get_latest_telemetry(self, device_id: str, keys: list[str]) -> dict[str, float]:
+        """Fetch the newest value per key. Returns ``{key: value}``."""
+        readings = await self.get_latest_readings(device_id, keys)
+        return {key: value for key, (value, _) in readings.items()}
 
     async def get_telemetry_history(
         self,
