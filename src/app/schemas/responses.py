@@ -13,6 +13,14 @@ class DeviceResponse(BaseModel):
     latest_readings: dict[str, float] | None = None
 
 
+class LinkedDeviceResponse(BaseModel):
+    """Linked device response for onboarding/link flows."""
+
+    platform_device_id: str
+    device_name: str
+    device_type: str
+
+
 class HealthScoreResponse(BaseModel):
     """Current Growth Health Score."""
 

@@ -3,23 +3,33 @@
 import asyncio
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth.dependencies import get_current_user
 from app.clients.favoriot import FavorIoTClient, get_favoriot_client
 from app.db.d1 import execute, get_db, query_all, query_first
 from app.db.models import UserDevice
-from app.schemas.requests import DeviceRegisterRequest
-from app.schemas.responses import DeviceResponse
+from app.schemas.requests import DeviceLinkRequest, DeviceRegisterRequest
+from app.schemas.responses import DeviceResponse, LinkedDeviceResponse
 
 router = APIRouter()
 
 _TELEMETRY_KEYS = ["soil_moisture", "temperature", "humidity", "water_level"]
 
 
+async def _read_latest(favoriot: FavorIoTClient, device_id: str) -> dict[str, float] | None:
+    """Read latest telemetry for a device without failing the whole list."""
+    try:
+        telemetry = await favoriot.get_latest_telemetry(device_id, keys=_TELEMETRY_KEYS)
+    except Exception:
+        return None
+    return {key: telemetry[key] for key in _TELEMETRY_KEYS if key in telemetry}
+
+
 @router.post("/api/v1/devices/register")
 async def register_device(
     body: DeviceRegisterRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
     favoriot: FavorIoTClient = Depends(get_favoriot_client),
     db: Any = Depends(get_db),
 ) -> dict[str, str]:
@@ -27,6 +37,7 @@ async def register_device(
 
     Creates the FavorIoT device, saves the mapping, and returns its access token.
     """
+    user_id = str(current_user["sub"])
     favoriot_device = await favoriot.create_device(name=body.device_name, device_type="sensor")
     platform_device_id = str(favoriot_device["device_developer_id"])
     device_access_token = str(favoriot_device.get("accesstoken") or "")
@@ -34,65 +45,120 @@ async def register_device(
     await execute(
         db,
         "INSERT INTO user_devices (user_id, favoriot_device_id, device_name, mac_address) "
-        "VALUES (?, ?, ?, ?)",
-        [body.user_id, platform_device_id, body.device_name, body.mac_address],
+        "VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(favoriot_device_id) DO UPDATE SET "
+        "user_id = excluded.user_id, device_name = excluded.device_name, "
+        "mac_address = excluded.mac_address",
+        (user_id, platform_device_id, body.device_name, body.mac_address),
     )
 
-    return {"device_access_token": device_access_token, "device_id": platform_device_id}
+    return {
+        "device_access_token": device_access_token,
+        "device_id": platform_device_id,
+    }
+
+
+@router.post("/api/v1/devices/link", response_model=LinkedDeviceResponse)
+async def link_device(
+    body: DeviceLinkRequest,
+    current_user: dict[str, Any] = Depends(get_current_user),
+    favoriot: FavorIoTClient = Depends(get_favoriot_client),
+    db: Any = Depends(get_db),
+) -> LinkedDeviceResponse:
+    """Link an existing FavorIoT device to the authenticated user."""
+    user_id = str(current_user["sub"])
+    device_id = body.device_developer_id.strip()
+    if not device_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="device_developer_id is required"
+        )
+
+    favoriot_devices = await favoriot.list_devices()
+    matching = [
+        device
+        for device in favoriot_devices
+        if str(device.get("device_developer_id")) == device_id
+    ]
+    if not matching:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="FavorIoT device not found",
+        )
+
+    favoriot_device = matching[0]
+    device_name = body.device_name or str(favoriot_device.get("device_name") or device_id)
+    device_type = str(favoriot_device.get("device_type") or "sensor")
+
+    existing = await query_first(
+        db,
+        "SELECT * FROM user_devices WHERE favoriot_device_id = ?",
+        [device_id],
+    )
+    if existing is not None:
+        if str(existing["user_id"]) != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Device is already linked to another user",
+            )
+        return LinkedDeviceResponse(
+            platform_device_id=device_id,
+            device_name=str(existing["device_name"]),
+            device_type=str(existing["device_type"]),
+        )
+
+    await execute(
+        db,
+        "INSERT INTO user_devices (user_id, favoriot_device_id, device_name, device_type) "
+        "VALUES (?, ?, ?, ?)",
+        (user_id, device_id, device_name, device_type),
+    )
+    return LinkedDeviceResponse(
+        platform_device_id=device_id,
+        device_name=device_name,
+        device_type=device_type,
+    )
 
 
 @router.get("/api/v1/devices", response_model=list[DeviceResponse])
 async def list_devices(
-    user: dict[str, Any] = Depends(get_current_user),
+    current_user: dict[str, Any] = Depends(get_current_user),
     favoriot: FavorIoTClient = Depends(get_favoriot_client),
     db: Any = Depends(get_db),
 ) -> list[DeviceResponse]:
-    """List all devices belonging to the current user, with latest telemetry."""
+    """List devices linked to the current user."""
+    user_id = str(current_user["sub"])
     rows = await query_all(
         db,
-        "SELECT id, user_id, favoriot_device_id, device_name, device_type, mac_address, created_at "
-        "FROM user_devices WHERE user_id = ?",
-        [user["sub"]],
+        "SELECT * FROM user_devices WHERE user_id = ? ORDER BY created_at ASC",
+        [user_id],
     )
     devices = [UserDevice.from_row(row) for row in rows]
+    if not devices:
+        return []
 
-    tasks = [
-        favoriot.get_latest_telemetry(device.favoriot_device_id, _TELEMETRY_KEYS)
-        for device in devices
+    telemetry_rows = await asyncio.gather(
+        *(_read_latest(favoriot, device.favoriot_device_id) for device in devices)
+    )
+    return [
+        DeviceResponse(
+            id=device.id,
+            favoriot_device_id=device.favoriot_device_id,
+            device_name=device.device_name,
+            device_type=device.device_type,
+            latest_readings=latest,
+        )
+        for device, latest in zip(devices, telemetry_rows, strict=True)
     ]
-    readings = await asyncio.gather(*tasks, return_exceptions=True)
-
-    response: list[DeviceResponse] = []
-    for device, reading in zip(devices, readings, strict=True):
-        latest = (
-            {key: float(value) for key, value in reading.items()}
-            if isinstance(reading, dict)
-            else None
-        )
-        response.append(
-            DeviceResponse(
-                id=device.id,
-                favoriot_device_id=device.favoriot_device_id,
-                device_name=device.device_name,
-                device_type=device.device_type,
-                latest_readings=latest,
-            )
-        )
-    return response
 
 
 @router.get("/api/devices")
-async def list_devices_for_user(
-    user: dict[str, Any] = Depends(get_current_user),
+async def list_devices_compat(
+    current_user: dict[str, Any] = Depends(get_current_user),
+    favoriot: FavorIoTClient = Depends(get_favoriot_client),
     db: Any = Depends(get_db),
-) -> dict[str, object]:
-    """Device list in the shape defined by the Flutter backend schema."""
-    rows = await query_all(
-        db,
-        "SELECT id, user_id, favoriot_device_id, device_name, device_type, mac_address, created_at "
-        "FROM user_devices WHERE user_id = ? ORDER BY id",
-        [user["sub"]],
-    )
+) -> dict[str, list[dict[str, str]]]:
+    """Compatibility device list for current Flutter client."""
+    devices = await list_devices(current_user=current_user, favoriot=favoriot, db=db)
     return {
         "devices": [
             {
@@ -100,7 +166,7 @@ async def list_devices_for_user(
                 "device_name": device.device_name,
                 "device_type": device.device_type,
             }
-            for device in (UserDevice.from_row(row) for row in rows)
+            for device in devices
         ]
     }
 
@@ -108,26 +174,8 @@ async def list_devices_for_user(
 @router.get("/api/v1/devices/{device_id}")
 async def get_device(
     device_id: str,
-    user: dict[str, Any] = Depends(get_current_user),
+    _current_user: dict[str, Any] = Depends(get_current_user),
     favoriot: FavorIoTClient = Depends(get_favoriot_client),
-    db: Any = Depends(get_db),
-) -> dict[str, object]:
-    """Get single device details plus latest telemetry."""
-    row = await query_first(
-        db,
-        "SELECT id, user_id, favoriot_device_id, device_name, device_type, mac_address, created_at "
-        "FROM user_devices WHERE favoriot_device_id = ? AND user_id = ? LIMIT 1",
-        [device_id, user["sub"]],
-    )
-    if row is None:
-        return {"error": "Device not found"}
-
-    device = UserDevice.from_row(row)
-    readings = await favoriot.get_latest_telemetry(device_id, _TELEMETRY_KEYS)
-    return {
-        "id": device.id,
-        "favoriot_device_id": device.favoriot_device_id,
-        "device_name": device.device_name,
-        "device_type": device.device_type,
-        "latest_readings": readings,
-    }
+) -> dict[str, Any]:
+    """Get FavorIoT device details by platform device ID."""
+    return await favoriot.get_device(device_id)

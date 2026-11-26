@@ -47,6 +47,18 @@ class FakeFavorIoT:
         self.history: dict[str, list[dict[str, Any]]] = {}
         self.command_calls: list[tuple[str, str, dict[str, object] | None]] = []
         self.history_calls = 0
+        self.devices: list[dict[str, Any]] = [
+            {
+                "device_developer_id": "Agrilink_1_device@anwarzain",
+                "device_name": "Agrilink 1",
+                "device_type": "sensor",
+            }
+        ]
+
+    async def list_devices(self, device_name: str | None = None) -> list[dict[str, Any]]:
+        if device_name is None:
+            return list(self.devices)
+        return [device for device in self.devices if device.get("device_name") == device_name]
 
     async def get_latest_telemetry(self, device_id: str, keys: list[str]) -> dict[str, Any]:
         return dict(self.latest)

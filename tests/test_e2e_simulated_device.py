@@ -286,7 +286,7 @@ def _assert_authentication_boundaries(client: TestClient) -> None:
     )
 
 
-def _register_device(client: TestClient) -> None:
+def _register_device(client: TestClient, token: str) -> None:
     registration = client.post(
         "/api/v1/devices/register",
         json={
@@ -294,6 +294,7 @@ def _register_device(client: TestClient) -> None:
             "user_id": _USER_ID,
             "device_name": "Agrilink 1",
         },
+        headers={"Authorization": f"Bearer {token}"},
     )
     assert registration.status_code == 200
     assert registration.json()["device_id"] == _DEVICE_ID
@@ -390,7 +391,7 @@ def test_full_backend_journey_with_simulated_device(monkeypatch: pytest.MonkeyPa
         client = TestClient(app)
         token = jwks.token()
         _assert_authentication_boundaries(client)
-        _register_device(client)
+        _register_device(client, token)
         _publish_device_readings(favoriot)
         _assert_http_journey(client, token, favoriot)
         _assert_websocket_journey(client, token)
