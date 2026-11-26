@@ -28,6 +28,7 @@ class HealthScoreResponse(BaseModel):
     score: float
     status: str
     components: dict[str, float]
+    stale: bool = False
 
 
 class GHSSummaryResponse(BaseModel):

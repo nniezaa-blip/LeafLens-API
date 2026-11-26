@@ -11,7 +11,13 @@ from app.db.d1 import get_db
 from app.schemas.responses import GHSSummaryResponse, HealthScoreResponse
 from app.services.devices import resolve_user_devices
 from app.services.ghs import compute_health_score
-from app.services.telemetry import ENVIRONMENT_KEYS, read_latest_snapshot
+from app.services.telemetry import (
+    ENVIRONMENT_KEYS,
+    HEALTH_STALE_AFTER_MS,
+    read_latest_snapshot_with_timestamps,
+    reconcile_snapshot_with_history,
+    snapshot_is_stale,
+)
 
 router = APIRouter()
 
@@ -23,20 +29,21 @@ async def get_health_score(
     favoriot: FavorIoTClient = Depends(get_favoriot_client),
 ) -> HealthScoreResponse:
     """Current Growth Health Score - computed from latest telemetry."""
-    readings = await favoriot.get_latest_telemetry(
-        device_id,
-        keys=["soil_moisture", "temperature", "humidity"],
-    )
+    keys = ("soil_moisture", "temperature", "humidity")
+    readings = await favoriot.get_latest_readings(device_id, keys=list(keys))
     score, status, components = compute_health_score(
-        soil_moisture=readings.get("soil_moisture"),
-        temperature=readings.get("temperature"),
-        humidity=readings.get("humidity"),
+        soil_moisture=readings.get("soil_moisture", (None, 0))[0],
+        temperature=readings.get("temperature", (None, 0))[0],
+        humidity=readings.get("humidity", (None, 0))[0],
     )
+    oldest_allowed_ms = int(datetime.now(UTC).timestamp() * 1000) - HEALTH_STALE_AFTER_MS
+    stale = any(key not in readings or readings[key][1] < oldest_allowed_ms for key in keys)
     return HealthScoreResponse(
         device_id=device_id,
         score=score,
         status=status.value,
         components=components,
+        stale=stale,
     )
 
 
@@ -48,11 +55,14 @@ async def get_health_score_for_user(
 ) -> dict[str, object]:
     """Current GHS for the authenticated user's linked device."""
     devices = await resolve_user_devices(user["sub"], db)
-    readings = await read_latest_snapshot(
+    keys = tuple(ENVIRONMENT_KEYS)
+    snapshot = await read_latest_snapshot_with_timestamps(
         favoriot,
         devices,
-        keys=tuple(ENVIRONMENT_KEYS),
+        keys=keys,
     )
+    await reconcile_snapshot_with_history(favoriot, devices, snapshot, keys=keys)
+    readings = {key: reading.value for key, reading in snapshot.items()}
     score, status, components = compute_health_score(
         soil_moisture=readings.get("soil_moisture"),
         temperature=readings.get("temperature"),
@@ -62,6 +72,7 @@ async def get_health_score_for_user(
         "score": score,
         "status": status.value,
         "component_scores": components,
+        "stale": snapshot_is_stale(snapshot, keys),
         "computed_at": datetime.now(UTC).isoformat(),
     }
 

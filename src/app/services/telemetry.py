@@ -18,6 +18,7 @@ ENVIRONMENT_KEYS = {"soil_moisture", "temperature", "humidity"}
 WATER_KEYS = {"water_level"}
 HISTORY_LOOKBACK_DAYS = 90
 RECONCILE_STALE_AFTER_MS = 3_600_000
+HEALTH_STALE_AFTER_MS = 1_800_000
 
 
 @dataclass(frozen=True)
@@ -107,6 +108,20 @@ async def read_latest_snapshot(
     """Read the newest value for each key across every linked device."""
     snapshot = await read_latest_snapshot_with_timestamps(favoriot, devices, keys)
     return {key: reading.value for key, reading in snapshot.items()}
+
+
+def snapshot_is_stale(
+    snapshot: dict[str, SnapshotReading],
+    keys: tuple[str, ...],
+    max_age_ms: int = HEALTH_STALE_AFTER_MS,
+) -> bool:
+    """Whether any required reading is missing or older than ``max_age_ms``."""
+    oldest_allowed_ms = int(datetime.now(UTC).timestamp() * 1000) - max_age_ms
+    for key in keys:
+        reading = snapshot.get(key)
+        if reading is None or reading.recorded_at_ms < oldest_allowed_ms:
+            return True
+    return False
 
 
 async def reconcile_snapshot_with_history(

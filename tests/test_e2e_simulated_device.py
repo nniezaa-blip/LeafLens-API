@@ -386,7 +386,12 @@ def _assert_websocket_journey(client: TestClient, token: str) -> None:
             "humidity": "Agrilink 1",
             "waterLevel": "Agrilink 1",
         }
-        assert websocket.receive_json() == {"type": "ghs", "score": 100.0, "status": "Optimal"}
+        assert websocket.receive_json() == {
+            "type": "ghs",
+            "score": 100.0,
+            "status": "Optimal",
+            "stale": False,
+        }
 
 
 def test_full_backend_journey_with_simulated_device(monkeypatch: pytest.MonkeyPatch) -> None:

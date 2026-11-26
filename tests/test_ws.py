@@ -61,7 +61,12 @@ def test_ws_first_message_auth_and_initial_snapshot(monkeypatch) -> None:
         }
 
         ghs = websocket.receive_json()
-        assert ghs == {"type": "ghs", "score": 100.0, "status": "Optimal"}
+        assert ghs == {
+            "type": "ghs",
+            "score": 100.0,
+            "status": "Optimal",
+            "stale": True,
+        }
 
 
 def test_ws_initial_snapshot_falls_back_to_last_known(monkeypatch) -> None:

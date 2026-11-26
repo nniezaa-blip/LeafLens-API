@@ -17,6 +17,7 @@ from app.services.telemetry import (
     SnapshotReading,
     read_latest_snapshot_with_timestamps,
     reconcile_snapshot_with_history,
+    snapshot_is_stale,
 )
 
 logger = logging.getLogger(__name__)
@@ -194,7 +195,16 @@ class _RelayConnection:
             temperature=temperature.value,
             humidity=humidity.value,
         )
-        await self.send({"type": "ghs", "score": score, "status": status.value})
+        health_keys = ("soil_moisture", "temperature", "humidity")
+        health_snapshot = {key: self._latest[key] for key in health_keys}
+        await self.send(
+            {
+                "type": "ghs",
+                "score": score,
+                "status": status.value,
+                "stale": snapshot_is_stale(health_snapshot, health_keys),
+            }
+        )
 
 
 @router.websocket("/ws")
