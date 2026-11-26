@@ -151,9 +151,14 @@ class _RelayConnection:
             except Exception:
                 logger.warning("Telemetry poll failed", exc_info=True)
                 continue
-            if snapshot == self._latest:
+            changed = False
+            for key, reading in snapshot.items():
+                current = self._latest.get(key)
+                if current is None or reading.recorded_at_ms > current.recorded_at_ms:
+                    self._latest[key] = reading
+                    changed = True
+            if not changed:
                 continue
-            self._latest.update(snapshot)
             await self.send_telemetry()
             await self.send_health()
 
